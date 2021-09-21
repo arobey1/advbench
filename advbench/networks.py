@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 def Classifier(input_shape, num_classes, hparams):
-    if len(input_shape) == 1:
+    if input_shape[0] == 1:
         return MNISTNet(input_shape, num_classes)
     else:
         assert False
