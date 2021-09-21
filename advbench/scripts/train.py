@@ -1,8 +1,11 @@
 import argparse
 import torch
+import os
+from collections import defaultdict
 
 from advbench import datasets
 from advbench import algorithms
+from advbench import attacks
 from advbench import hparams_registry
 from advbench.lib import misc, meters
 
@@ -13,38 +16,56 @@ def main(args, hparams):
     dataset = vars(datasets)[args.dataset](args.data_dir)
     train_ldr, val_ldr, test_ldr = datasets.to_loaders(dataset, hparams)
 
-
     algorithm = vars(algorithms)[args.algorithm](
-        dataset.input_shape, 
-        dataset.num_classes,
+        dataset.INPUT_SHAPE, 
+        dataset.NUM_CLASSES,
         hparams).to(device)
 
+    test_attacks = {
+        a: vars(attacks)[a](algorithm.classifier, hparams) for a in args.test_attacks}
+
     timer = meters.TimeMeter()
-    train_acc_meter = meters.AverageMeter()
+    
+    metrics = defaultdict(lambda: defaultdict(dict))
+    step_dict = {}
 
-    for epoch in range(0, dataset.n_epochs):
+    for epoch in range(0, dataset.N_EPOCHS):
 
+        loss_meter = meters.AverageMeter()
         for batch_idx, (imgs, labels) in enumerate(train_ldr):
+
+            global_step = epoch * len(train_ldr) + batch_idx
 
             timer.batch_start()
             imgs, labels = imgs.to(device), labels.to(device)
             step_vals = algorithm.step(imgs, labels)
-        
-            # print(step_vals['loss'])
-
+            step_dict[global_step] = step_vals
+            loss_meter.update(step_vals['loss'], n=imgs.size(0))
             timer.batch_end()
 
-        val_acc = misc.accuracy(algorithm, val_ldr, device)
-        test_acc = misc.accuracy(algorithm, test_ldr, device)
+        metrics[epoch]['val']['clean'] = misc.accuracy(algorithm, val_ldr, device)
+        metrics[epoch]['test']['clean'] = misc.accuracy(algorithm, test_ldr, device)
 
-        print(test_acc)
+        for attack_name, attack in test_attacks.items():
+            metrics[epoch]['val'][attack_name] = misc.adv_accuracy(algorithm, val_ldr, device, attack)
+            metrics[epoch]['test'][attack_name] = misc.adv_accuracy(algorithm, test_ldr, device, attack)
+            
+        print(f'Epoch: {epoch}/{dataset.N_EPOCHS}')
+        print(f'Avg. train loss: {loss_meter.avg}\t', end='')
+        print(f'Clean val. accuracy: {metrics[epoch]["val"]["clean"]:.3f}')
+        for attack_name in test_attacks.keys():
+            print(f'{attack_name} val. accuracy: {metrics[epoch]["test"][attack_name]:.3f}\t', end='')
+        print('')
+
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Adversarial robustness evaluation')
     parser.add_argument('--data_dir', type=str, default='./advbench/data')
+    parser.add_argument('--output_dir', type=str, default='train_output')
     parser.add_argument('--dataset', type=str, default='MNIST', help='Dataset to use')
     parser.add_argument('--algorithm', type=str, default='ERM', help='Algorithm to run')
+    parser.add_argument('--test_attacks', type=str, nargs='+', default=['PGD_Linf'])
     parser.add_argument('--hparams', type=str, help='JSON-serialized hparams dict')
     parser.add_argument('--hparams_seed', type=int, default=0, help='Seed for hyperparameters')
     parser.add_argument('--trial_seed', type=int, default=0, help='Trial number')
