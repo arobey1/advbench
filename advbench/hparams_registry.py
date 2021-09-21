@@ -35,7 +35,11 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     _hparam('weight_decay', 0., lambda r: 10 ** r.uniform(-6, -3))
 
     # Algorithm specific
+    _hparam('epsilon', 0.3, lambda r: 0.3)
 
+    # PGD
+    _hparam('pgd_n_steps', 7, lambda r: 7)
+    _hparam('pgd_step_size', 0.1, lambda r: 0.1)
     
 
 
