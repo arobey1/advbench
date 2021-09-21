@@ -2,6 +2,7 @@ import argparse
 import torch
 import os
 from collections import defaultdict
+import json
 
 from advbench import datasets
 from advbench import algorithms
@@ -12,6 +13,7 @@ from advbench.lib import misc, meters
 def main(args, hparams):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    os.makedirs(os.path.join(args.output_dir), exist_ok=True)
 
     dataset = vars(datasets)[args.dataset](args.data_dir)
     train_ldr, val_ldr, test_ldr = datasets.to_loaders(dataset, hparams)
@@ -52,11 +54,13 @@ def main(args, hparams):
             
         print(f'Epoch: {epoch}/{dataset.N_EPOCHS}')
         print(f'Avg. train loss: {loss_meter.avg}\t', end='')
-        print(f'Clean val. accuracy: {metrics[epoch]["val"]["clean"]:.3f}')
+        print(f'Clean val. accuracy: {metrics[epoch]["val"]["clean"]:.3f}\t', end='')
         for attack_name in test_attacks.keys():
             print(f'{attack_name} val. accuracy: {metrics[epoch]["test"][attack_name]:.3f}\t', end='')
-        print('')
+        print('\n')
 
+        with open(os.path.join(args.output_dir, 'results.json'), 'a') as f:
+            f.write(json.dumps(metrics[epoch], sort_keys=True) + "\n")
 
 if __name__ == '__main__':
 
