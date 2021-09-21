@@ -4,29 +4,40 @@ import torch
 from advbench import datasets
 from advbench import algorithms
 from advbench import hparams_registry
-from advbench.lib import misc
+from advbench.lib import misc, meters
 
 def main(args, hparams):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    dataset_class = vars(datasets)[args.dataset]
-    all_datasets = datasets.to_datasets(dataset_class, args.data_dir)
-    train_ldr, val_ldr, test_ldr = datasets.to_loaders(all_datasets, hparams)
+    dataset = vars(datasets)[args.dataset](args.data_dir)
+    train_ldr, val_ldr, test_ldr = datasets.to_loaders(dataset, hparams)
 
-    algorithm_class = vars(algorithms)[args.algorithm]
-    algorithm = algorithm_class(
-        all_datasets[0].input_shape, 
-        all_datasets[0].num_classes,
-        hparams)
-    algorithm.to(device)
 
-    for epoch in range(0, 10):
+    algorithm = vars(algorithms)[args.algorithm](
+        dataset.input_shape, 
+        dataset.num_classes,
+        hparams).to(device)
+
+    timer = meters.TimeMeter()
+    train_acc_meter = meters.AverageMeter()
+
+    for epoch in range(0, dataset.n_epochs):
 
         for batch_idx, (imgs, labels) in enumerate(train_ldr):
+
+            timer.batch_start()
             imgs, labels = imgs.to(device), labels.to(device)
             step_vals = algorithm.step(imgs, labels)
+        
+            # print(step_vals['loss'])
 
+            timer.batch_end()
+
+        val_acc = misc.accuracy(algorithm, val_ldr, device)
+        test_acc = misc.accuracy(algorithm, test_ldr, device)
+
+        print(test_acc)
 
 if __name__ == '__main__':
 
