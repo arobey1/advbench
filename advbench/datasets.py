@@ -34,7 +34,8 @@ class CIFAR10(AdvRobDataset):
  
     INPUT_SHAPE = (3, 32, 32)
     NUM_CLASSES = 10
-    N_EPOCHS = 20
+    N_EPOCHS = 100
+    CHECKPOINT_FREQ = 10
 
     def __init__(self, root):
         super(CIFAR10, self).__init__()
@@ -58,7 +59,8 @@ class MNIST(AdvRobDataset):
 
     INPUT_SHAPE = (1, 28, 28)
     NUM_CLASSES = 10
-    N_EPOCHS = 10
+    N_EPOCHS = 2
+    CHECKPOINT_FREQ = 1
 
     def __init__(self, root):
         super(MNIST, self).__init__()

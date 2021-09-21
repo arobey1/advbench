@@ -52,7 +52,7 @@ def main(args, hparams):
             metrics[epoch]['val'][attack_name] = misc.adv_accuracy(algorithm, val_ldr, device, attack)
             metrics[epoch]['test'][attack_name] = misc.adv_accuracy(algorithm, test_ldr, device, attack)
             
-        print(f'Epoch: {epoch}/{dataset.N_EPOCHS}')
+        print(f'Epoch: {epoch+1}/{dataset.N_EPOCHS}')
         print(f'Avg. train loss: {loss_meter.avg}\t', end='')
         print(f'Clean val. accuracy: {metrics[epoch]["val"]["clean"]:.3f}\t', end='')
         for attack_name in test_attacks.keys():
@@ -61,6 +61,13 @@ def main(args, hparams):
 
         with open(os.path.join(args.output_dir, 'results.json'), 'a') as f:
             f.write(json.dumps(metrics[epoch], sort_keys=True) + "\n")
+
+    torch.save(
+        {'model': algorithm.state_dict()}, 
+        os.path.join(args.output_dir, f'ckpt.pkl'))
+
+    with open(os.path.join(args.output_dir, 'done'), 'w') as f:
+        f.write('done')
 
 if __name__ == '__main__':
 
