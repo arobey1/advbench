@@ -31,12 +31,13 @@ class AdvRobDataset(Dataset):
 
 
 class CIFAR10(AdvRobDataset):
+ 
+    INPUT_SHAPE = (3, 32, 32)
+    NUM_CLASSES = 10
+    N_EPOCHS = 20
+
     def __init__(self, root):
         super(CIFAR10, self).__init__()
-
-        self.input_shape = (3, 32, 32)
-        self.num_classes  = 10
-        self.n_epochs = 20
 
         train_transforms = transforms.Compose([
             transforms.RandomCrop(32, padding=4),
@@ -54,12 +55,13 @@ class CIFAR10(AdvRobDataset):
 
 
 class MNIST(AdvRobDataset):
+
+    INPUT_SHAPE = (1, 28, 28)
+    NUM_CLASSES = 10
+    N_EPOCHS = 10
+
     def __init__(self, root):
         super(MNIST, self).__init__()
-
-        self.input_shape = (1, 28, 28)
-        self.num_classes = 10
-        self.n_epochs = 100
         
         xforms = transforms.ToTensor()
 
