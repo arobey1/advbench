@@ -5,20 +5,17 @@ from torchvision.datasets import MNIST as MNIST_
 
 SPLITS = ['train', 'val', 'test']
 
-def to_datasets(dataset_class, data_dir):
-    return [dataset_class(data_dir, split=s) for s in SPLITS]
-
-def to_loaders(datasets, hparams):
+def to_loaders(all_datasets, hparams):
     
-    def _to_loader(dataset, split):
+    def _to_loader(split, dataset):
         batch_size = hparams['batch_size'] if split == 'train' else 64
         return DataLoader(
             dataset=dataset, 
             batch_size=batch_size,
-            num_workers=dataset.n_workers,
+            num_workers=all_datasets.N_WORKERS,
             shuffle=(split == 'train'))
     
-    return [_to_loader(d, s) for (d, s) in zip(datasets, SPLITS)]
+    return [_to_loader(s, d) for (s, d) in all_datasets.splits.items()]
 
 
 class AdvRobDataset(Dataset):
@@ -26,24 +23,20 @@ class AdvRobDataset(Dataset):
     N_WORKERS = 8            # Default, subclasses may override
     INPUT_SHAPE = None       # Subclasses should override
     NUM_CLASSES = None       # Subclasses should override
+    N_EPOCHS = None          # Subclasses should override
+    CHECKPOINT_FREQ = None   # Subclasses should override
 
-    def __init__(self, split):
-        if split not in ['train', 'val', 'test']:
-            raise ValueError(f'Invalid split = {split}.')
-
-    def __getitem__(self, index):
-        return self.data[index]
-
-    def __len__(self):
-        return len(self.data)
+    def __init__(self):
+        self.splits = dict.fromkeys(SPLITS)
 
 
 class CIFAR10(AdvRobDataset):
-    def __init__(self, root, split):
-        super(CIFAR10, self).__init__(split)
+    def __init__(self, root):
+        super(CIFAR10, self).__init__()
 
         self.input_shape = (3, 32, 32)
         self.num_classes  = 10
+        self.n_epochs = 20
 
         train_transforms = transforms.Compose([
             transforms.RandomCrop(32, padding=4),
@@ -51,30 +44,29 @@ class CIFAR10(AdvRobDataset):
             transforms.ToTensor()])
         test_transforms = transforms.ToTensor()
 
-        if split == 'train':
-            train_data = CIFAR10_(root, train=True, transform=train_transforms)
-            self.data = Subset(train_data, range(45000))
-        elif split == 'val':
-            train_data = CIFAR10_(root, train=True, transform=train_transforms)
-            self.data = Subset(train_data, range(45000, 50001))
-        else:
-            self.data = CIFAR10_(root, train=False, transform=test_transforms)
+        train_data = CIFAR10_(root, train=True, transform=train_transforms)
+        self.splits['train'] = Subset(train_data, range(45000))
+
+        train_data = CIFAR10_(root, train=True, transform=train_transforms)
+        self.splits['val'] = Subset(train_data, range(45000, 50000))
+
+        self.splits['test'] = CIFAR10_(root, train=False, transform=test_transforms)
 
 
 class MNIST(AdvRobDataset):
-    def __init__(self, root, split):
-        super(MNIST, self).__init__(split)
+    def __init__(self, root):
+        super(MNIST, self).__init__()
 
         self.input_shape = (1, 28, 28)
         self.num_classes = 10
-
+        self.n_epochs = 100
+        
         xforms = transforms.ToTensor()
 
-        if split == 'train':
-            train_data = MNIST_(root, train=True, transform=xforms)
-            self.data = Subset(train_data, range(54000))
-        elif split == 'val':
-            train_data = MNIST_(root, train=True, transform=xforms)
-            self.data = Subset(train_data, range(54000, 60001))
-        else:
-            self.data = MNIST_(root, train=False, transform=xforms)
+        train_data = MNIST_(root, train=True, transform=xforms)
+        self.splits['train'] = Subset(train_data, range(54000))
+
+        train_data = MNIST_(root, train=True, transform=xforms)
+        self.splits['val'] = Subset(train_data, range(54000, 60000))
+
+        self.splits['test'] = MNIST_(root, train=False, transform=xforms)
