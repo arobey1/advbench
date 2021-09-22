@@ -24,28 +24,21 @@ def main(args, hparams):
 
     test_attacks = {
         a: vars(attacks)[a](algorithm.classifier, hparams) for a in args.test_attacks}
-
-    timer = meters.TimeMeter()
     
-    results_df = pd.DataFrame(columns=['Epoch', 'Accuracy', 'Eval-Method', 'Split', 'Output-Dir'])
+    columns = ['Epoch', 'Accuracy', 'Eval-Method', 'Split', 'Train-Alg', 'Dataset', 'Trial-Seed', 'Output-Dir']
+    results_df = pd.DataFrame(columns=columns)
     def add_results_row(data):
-        results_df.loc[len(results_df)] = data + [args.output_dir]
-
-    step_dict = {}
+        defaults = [args.algorithm, args.dataset, args.trial_seed, args.output_dir]
+        results_df.loc[len(results_df)] = data + defaults
 
     for epoch in range(0, dataset.N_EPOCHS):
 
         loss_meter = meters.AverageMeter()
         for batch_idx, (imgs, labels) in enumerate(train_ldr):
 
-            global_step = epoch * len(train_ldr) + batch_idx
-
-            timer.batch_start()
             imgs, labels = imgs.to(device), labels.to(device)
             step_vals = algorithm.step(imgs, labels)
-            step_dict[global_step] = step_vals
             loss_meter.update(step_vals['loss'], n=imgs.size(0))
-            timer.batch_end()
 
         # save clean accuracies on validation/test sets
         val_clean_acc = misc.accuracy(algorithm, val_ldr, device)
