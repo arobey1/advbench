@@ -9,7 +9,9 @@ from advbench import attacks
 ALGORITHMS = [
     'ERM',
     'PGD',
-    'TRADES'
+    'TRADES',
+    'ALP',
+    'CLP'
 ]
 
 class Algorithm(nn.Module):
