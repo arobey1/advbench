@@ -6,6 +6,12 @@ from advbench import networks
 from advbench import optimizers
 from advbench import attacks
 
+ALGORITHMS = [
+    'ERM',
+    'PGD',
+    'TRADES'
+]
+
 class Algorithm(nn.Module):
     def __init__(self, input_shape, num_classes, hparams):
         super(Algorithm, self).__init__()
