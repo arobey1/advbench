@@ -80,11 +80,15 @@ if __name__ == '__main__':
     parser.add_argument('--hparams', type=str, help='JSON-serialized hparams dict')
     parser.add_argument('--hparams_seed', type=int, default=0, help='Seed for hyperparameters')
     parser.add_argument('--trial_seed', type=int, default=0, help='Trial number')
+    parser.add_argument('--seed', type=int, default=0, help='Seed for everything else')
     args = parser.parse_args()
 
     print('Args:')
     for k, v in sorted(vars(args).items()):
         print(f'\t{k}: {v}')
+
+    with open(os.path.join(args.output_dir, 'args.json'), 'w') as f:
+        f.write(json.dumps(args.__dict__, sort_keys=True))
 
     if args.dataset not in vars(datasets):
         raise NotImplementedError(f'Dataset {args.dataset} is not implemented.')
@@ -93,12 +97,13 @@ if __name__ == '__main__':
         hparams = hparams_registry.default_hparams(args.algorithm, args.dataset)
     else:
         seed = misc.seed_hash(args.hparams_seed, args.trial_seed)
-        hparams = hparams_registry.default_hparams(args.algorithm, args.dataset, seed)
+        hparams = hparams_registry.random_hparams(args.algorithm, args.dataset, seed)
 
     print ('Hparams:')
     for k, v in sorted(hparams.items()):
         print(f'\t{k}: {v}')
 
-    # TODO(AR): need some way of saving hparams and args
+    with open(os.path.join(args.output_dir, 'hparams.json'), 'w') as f:
+        f.write(json.dumps(hparams, sort_keys=True))
 
     main(args, hparams)
