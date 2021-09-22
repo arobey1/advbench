@@ -2,8 +2,10 @@ import numpy as np
 import argparse
 import prettytable
 import pandas as pd
+import sys
+import os
 
-from advbench.lib import reporting
+from advbench.lib import reporting, misc
 from advbench import datasets
 
 #TODO(AR): Currently no support for multiple trials
@@ -33,11 +35,9 @@ if __name__ == '__main__':
     parser.add_argument('--input_dir', type=str, required=True)
     args = parser.parse_args()
 
-    results_file = 'results.txt'
-    # sys.stdout = misc
+    sys.stdout = misc.Tee(os.path.join(args.input_dir, 'results.txt'), 'w')
 
     records = reporting.load_records(args.input_dir)
-    print(records)
 
     eval_methods = records['Eval-Method'].unique()
     dataset_names = records['Dataset'].unique()
