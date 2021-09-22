@@ -1,8 +1,8 @@
 import argparse
 import torch
 import os
-from collections import defaultdict
 import json
+import pandas as pd
 
 from advbench import datasets
 from advbench import algorithms
@@ -13,7 +13,6 @@ from advbench.lib import misc, meters
 def main(args, hparams):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    os.makedirs(os.path.join(args.output_dir), exist_ok=True)
 
     dataset = vars(datasets)[args.dataset](args.data_dir)
     train_ldr, val_ldr, test_ldr = datasets.to_loaders(dataset, hparams)
@@ -28,7 +27,10 @@ def main(args, hparams):
 
     timer = meters.TimeMeter()
     
-    metrics = defaultdict(lambda: defaultdict(dict))
+    results_df = pd.DataFrame(columns=['Epoch', 'Accuracy', 'Eval-Method', 'Split', 'Output-Dir'])
+    def add_results_row(data):
+        results_df.loc[len(results_df)] = data + [args.output_dir]
+
     step_dict = {}
 
     for epoch in range(0, dataset.N_EPOCHS):
@@ -45,22 +47,33 @@ def main(args, hparams):
             loss_meter.update(step_vals['loss'], n=imgs.size(0))
             timer.batch_end()
 
-        metrics[epoch]['val']['clean'] = misc.accuracy(algorithm, val_ldr, device)
-        metrics[epoch]['test']['clean'] = misc.accuracy(algorithm, test_ldr, device)
+        # save clean accuracies on validation/test sets
+        val_clean_acc = misc.accuracy(algorithm, val_ldr, device)
+        add_results_row([epoch, val_clean_acc, 'ERM', 'Validation'])
 
+        test_clean_acc = misc.accuracy(algorithm, test_ldr, device)
+        add_results_row([epoch, test_clean_acc, 'ERM', 'Test'])
+
+        # save adversarial accuracies on validation/test sets
+        val_adv_accs = []
         for attack_name, attack in test_attacks.items():
-            metrics[epoch]['val'][attack_name] = misc.adv_accuracy(algorithm, val_ldr, device, attack)
-            metrics[epoch]['test'][attack_name] = misc.adv_accuracy(algorithm, test_ldr, device, attack)
-            
+            val_adv_acc = misc.adv_accuracy(algorithm, val_ldr, device, attack)
+            add_results_row([epoch, val_adv_acc, attack_name, 'Validation'])
+            val_adv_accs.append(val_adv_acc)
+
+            test_adv_acc = misc.adv_accuracy(algorithm, test_ldr, device, attack)
+            add_results_row([epoch, test_adv_acc, attack_name, 'Test'])
+
+        # print results
         print(f'Epoch: {epoch+1}/{dataset.N_EPOCHS}')
         print(f'Avg. train loss: {loss_meter.avg}\t', end='')
-        print(f'Clean val. accuracy: {metrics[epoch]["val"]["clean"]:.3f}\t', end='')
-        for attack_name in test_attacks.keys():
-            print(f'{attack_name} val. accuracy: {metrics[epoch]["test"][attack_name]:.3f}\t', end='')
+        print(f'Clean val. accuracy: {val_clean_acc:.3f}\t', end='')
+        for attack_name, acc in zip(test_attacks.keys(), val_adv_accs):
+            print(f'{attack_name} val. accuracy: {acc:.3f}\t', end='')
         print('\n')
 
-        with open(os.path.join(args.output_dir, 'results.json'), 'a') as f:
-            f.write(json.dumps(metrics[epoch], sort_keys=True) + "\n")
+        # save results dataframe to file
+        results_df.to_pickle(os.path.join(args.output_dir, 'results.pkl'))
 
     torch.save(
         {'model': algorithm.state_dict()}, 
@@ -82,6 +95,8 @@ if __name__ == '__main__':
     parser.add_argument('--trial_seed', type=int, default=0, help='Trial number')
     parser.add_argument('--seed', type=int, default=0, help='Seed for everything else')
     args = parser.parse_args()
+
+    os.makedirs(os.path.join(args.output_dir), exist_ok=True)
 
     print('Args:')
     for k, v in sorted(vars(args).items()):
