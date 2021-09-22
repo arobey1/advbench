@@ -88,7 +88,7 @@ if __name__ == '__main__':
         print(f'\t{k}: {v}')
 
     with open(os.path.join(args.output_dir, 'args.json'), 'w') as f:
-        f.write(json.dumps(args.__dict__, sort_keys=True))
+        json.dump(args.__dict__, f, indent=2)
 
     if args.dataset not in vars(datasets):
         raise NotImplementedError(f'Dataset {args.dataset} is not implemented.')
@@ -104,6 +104,6 @@ if __name__ == '__main__':
         print(f'\t{k}: {v}')
 
     with open(os.path.join(args.output_dir, 'hparams.json'), 'w') as f:
-        f.write(json.dumps(hparams, sort_keys=True))
+        json.dump(hparams, f, indent=2)
 
     main(args, hparams)
