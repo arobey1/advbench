@@ -1,5 +1,6 @@
 import torch
 import hashlib
+import sys
 
 def seed_hash(*args):
     """Derive an integer hash from all args, for use as a random seed."""
@@ -39,3 +40,17 @@ def adv_accuracy(algorithm, loader, device, attack):
     algorithm.train()
 
     return 100. * correct / total
+
+class Tee:
+    def __init__(self, fname, mode="a"):
+        self.stdout = sys.stdout
+        self.file = open(fname, mode)
+
+    def write(self, message):
+        self.stdout.write(message)
+        self.file.write(message)
+        self.flush()
+
+    def flush(self):
+        self.stdout.flush()
+        self.file.flush()
