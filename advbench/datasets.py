@@ -4,6 +4,7 @@ from torchvision.datasets import CIFAR10 as CIFAR10_
 from torchvision.datasets import MNIST as MNIST_
 
 SPLITS = ['train', 'val', 'test']
+DATASETS = ['CIFAR10', 'MNIST']
 
 def to_loaders(all_datasets, hparams):
     
