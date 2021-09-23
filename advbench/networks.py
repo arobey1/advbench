@@ -31,5 +31,4 @@ class MNISTNet(nn.Module):
         x = F.relu(x)
         x = self.dropout2(x)
         x = self.fc2(x)
-        output = F.log_softmax(x, dim=1)    #TODO(AR): might need to remove softmax for KL div in TRADES
-        return output   
+        return F.log_softmax(x, dim=1)    #TODO(AR): might need to remove softmax for KL div in TRADES
