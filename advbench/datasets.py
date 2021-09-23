@@ -60,8 +60,8 @@ class MNIST(AdvRobDataset):
 
     INPUT_SHAPE = (1, 28, 28)
     NUM_CLASSES = 10
-    N_EPOCHS = 2
-    CHECKPOINT_FREQ = 1
+    N_EPOCHS = 20
+    CHECKPOINT_FREQ = 10
 
     def __init__(self, root):
         super(MNIST, self).__init__()
