@@ -9,6 +9,7 @@ from advbench import attacks
 ALGORITHMS = [
     'ERM',
     'PGD',
+    'FGSM',
     'TRADES',
     'ALP',
     'CLP'
@@ -56,19 +57,33 @@ class PGD(Algorithm):
 
         return {'loss': loss.item()}
 
+class FGSM(Algorithm):
+    def __init__(self, input_shape, num_classes, hparams):
+        super(FGSM, self).__init__(input_shape, num_classes, hparams)
+        self.attack = attacks.FGSM_Linf(self.classifier, self.hparams)
+
+    def step(self, imgs, labels):
+
+        adv_imgs = self.attack(imgs, labels)
+        self.optimizer.zero_grad()
+        loss = F.cross_entropy(self.predict(adv_imgs), labels)
+        loss.backward()
+        self.optimizer.step()
+
+        return {'loss': loss.item()}
+
 class TRADES(Algorithm):
     def __init__(self, input_shape, num_classes, hparams):
         super(TRADES, self).__init__(input_shape, num_classes, hparams)
-        self.kl_loss_fn = nn.KLDivLoss(size_average=False)  # AR: let's write a method to do the log-softmax part
+        self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')  # AR: let's write a method to do the log-softmax part
         self.attack = attacks.TRADES_Linf(self.classifier, self.hparams)
 
     def step(self, imgs, labels):
 
-        batch_size = imgs.size(0)
-        adv_imgs = self._trades_iteration_linf(imgs)
+        adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(adv_imgs), labels)
-        robust_loss = (1. / batch_size) * self.kl_loss_fn(
+        robust_loss = self.kl_loss_fn(
             F.log_softmax(self.predict(adv_imgs), dim=1),
             F.softmax(self.predict(imgs), dim=1))
         total_loss = clean_loss + self.hparams['trades_beta'] * robust_loss
@@ -121,10 +136,28 @@ class CLP(LogitPairingBase):
 class MART(Algorithm):
     def __init__(self, input_shape, num_classes, hparams):
         super(MART, self).__init__(input_shape, num_classes, hparams)
-        self.kl_loss_fn = nn.KLDivLoss(size_average=False)
+        self.kl_loss_fn = nn.KLDivLoss(reduction='none')
+        self.attack = attacks.PGD_Linf(self.classifier, self.hparams)
 
     def step(self, imgs, labels):
-        pass
+        
+        adv_imgs = self.attack(imgs, labels)
+        self.optimizer.zero_grad()
+        clean_output = self.classifier(imgs)
+        adv_output = self.classifier(adv_imgs)
+        adv_probs = F.softmax(adv_output, dim=1)
+        tmp1 = torch.argsort(adv_probs, dim=1)[:, -2:]
+        new_label = torch.where(tmp1[:, -1] == labels, tmp1[:, -2], tmp1[:, -1])
+        loss_adv = F.cross_entropy(adv_output, labels) + F.nll_loss(torch.log(1.0001 - adv_probs + 1e-12), new_label)
+        nat_probs = F.softmax(clean_output, dim=1)
+        true_probs = torch.gather(nat_probs, 1, (labels.unsqueeze(1)).long()).squeeze()
+        loss_robust = (1.0 / imgs.size(0)) * torch.sum(
+            torch.sum(self.kl_loss_fn(torch.log(adv_probs + 1e-12), nat_probs), dim=1) * (1.0000001 - true_probs))
+        loss = loss_adv + self.hparams['mart_beta'] * loss_robust
+        loss.backward()
+        self.optimizer.step()
+
+        return {'loss': loss.item()}
 
 
 class MMA(Algorithm):
@@ -133,7 +166,9 @@ class MMA(Algorithm):
 # with and without primal dual
 
 class DALE_GaussianHMC(Algorithm):
-    pass
+    def __init__(self, input_shape, num_classes, hparams):
+
+        
 
 class DALE_LaplacianHMC(Algorithm):
     pass

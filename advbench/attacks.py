@@ -26,7 +26,7 @@ class Attack_Linf(Attack):
 
 class PGD_Linf(Attack_Linf):
     def __init__(self, classifier, hparams):
-        super(Attack_Linf, self).__init__(classifier, hparams)
+        super(PGD_Linf, self).__init__(classifier, hparams)
     
     def forward(self, imgs, labels):
         self.classifier.eval()
@@ -45,8 +45,8 @@ class PGD_Linf(Attack_Linf):
 
 class TRADES_Linf(Attack_Linf):
     def __init__(self, classifier, hparams):
-        super(Attack_Linf, self).__init__(classifier, hparams)
-        self.kl_loss_fn = nn.KLDivLoss(size_average=False)  # AR: let's write a method to do the log-softmax part
+        super(TRADES_Linf, self).__init__(classifier, hparams)
+        self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')  # AR: let's write a method to do the log-softmax part
 
     def forward(self, imgs, labels):
         self.classifier.eval()
@@ -60,8 +60,27 @@ class TRADES_Linf(Attack_Linf):
                     F.softmax(self.classifier(imgs), dim=1))
             
             grad = torch.autograd.grad(adv_loss, [adv_imgs])[0].detach()
-            adv_imgs = adv_imgs + self.hparams['pgd_step_size']* torch.sign(grad)
+            adv_imgs = adv_imgs + self.hparams['trades_step_size']* torch.sign(grad)
             adv_imgs = self._clamp_perturbation(imgs, adv_imgs)
         
         self.classifier.train()
         return adv_imgs.detach() # this detach may not be necessary
+
+class FGSM_Linf(Attack):
+    def __init__(self, classifier, hparams):
+        super(FGSM_Linf, self).__init__(classifier, hparams)
+
+    def forward(self, imgs, labels):
+        self.classifier.eval()
+
+        imgs.requires_grad = True
+        adv_loss = F.cross_entropy(self.classifier(imgs), labels)
+        grad = torch.autograd.grad(adv_loss, [imgs])[0].detach()
+        adv_imgs = imgs + self.hparams['epsilon'] * grad.sign()
+        adv_imgs = torch.clamp(adv_imgs, 0.0, 1.0)
+
+        self.classifier.train()
+
+        return adv_imgs.detach()
+
+# class LMC_Gaussian_Linf(Attack):
