@@ -10,7 +10,7 @@ from advbench import attacks
 from advbench import hparams_registry
 from advbench.lib import misc, meters
 
-def main(args, hparams):
+def main(args, hparams, test_hparams):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -23,7 +23,7 @@ def main(args, hparams):
         hparams).to(device)
 
     test_attacks = {
-        a: vars(attacks)[a](algorithm.classifier, hparams) for a in args.test_attacks}
+        a: vars(attacks)[a](algorithm.classifier, test_hparams) for a in args.test_attacks}
     
     columns = ['Epoch', 'Accuracy', 'Eval-Method', 'Split', 'Train-Alg', 'Dataset', 'Trial-Seed', 'Output-Dir']
     results_df = pd.DataFrame(columns=columns)
@@ -58,8 +58,11 @@ def main(args, hparams):
             add_results_row([epoch, test_adv_acc, attack_name, 'Test'])
 
         # print results
-        print(f'Epoch: {epoch+1}/{dataset.N_EPOCHS}')
-        print(f'Avg. train loss: {loss_meter.avg}\t', end='')
+        print(f'Epoch: {epoch+1}/{dataset.N_EPOCHS}\t', end='')
+        print(f'Training alg: {args.algorithm}\t', end='')
+        print(f'Dataset: {args.dataset}\t', end='')
+        print(f'Path: {args.output_dir}')
+        print(f'Avg. train loss: {loss_meter.avg:.3f}\t', end='')
         print(f'Clean val. accuracy: {val_clean_acc:.3f}\t', end='')
         for attack_name, acc in zip(test_attacks.keys(), val_adv_accs):
             print(f'{attack_name} val. accuracy: {acc:.3f}\t', end='')
@@ -114,4 +117,13 @@ if __name__ == '__main__':
     with open(os.path.join(args.output_dir, 'hparams.json'), 'w') as f:
         json.dump(hparams, f, indent=2)
 
-    main(args, hparams)
+    test_hparams = hparams_registry.test_hparams(args.algorithm, args.dataset)
+
+    print('Test hparams:')
+    for k, v in sorted(test_hparams.items()):
+        print(f'\t{k}: {v}')
+
+    with open(os.path.join(args.output_dir, 'test_hparams.json'), 'w') as f:
+        json.dump(test_hparams, f, indent=2)
+
+    main(args, hparams, test_hparams)
