@@ -10,6 +10,8 @@ from advbench import attacks
 from advbench import hparams_registry
 from advbench.lib import misc, meters
 
+# TODO(AR): Keep track of timing information
+
 def main(args, hparams, test_hparams):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -20,10 +22,11 @@ def main(args, hparams, test_hparams):
     algorithm = vars(algorithms)[args.algorithm](
         dataset.INPUT_SHAPE, 
         dataset.NUM_CLASSES,
-        hparams).to(device)
+        hparams,
+        device).to(device)
 
     test_attacks = {
-        a: vars(attacks)[a](algorithm.classifier, test_hparams) for a in args.test_attacks}
+        a: vars(attacks)[a](algorithm.classifier, test_hparams, device) for a in args.test_attacks}
     
     columns = ['Epoch', 'Accuracy', 'Eval-Method', 'Split', 'Train-Alg', 'Dataset', 'Trial-Seed', 'Output-Dir']
     results_df = pd.DataFrame(columns=columns)
