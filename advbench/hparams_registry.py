@@ -34,8 +34,9 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     _hparam('sgd_momentum', 0.9, lambda r: r.uniform(0.8, 0.95))
     _hparam('weight_decay', 0., lambda r: 10 ** r.uniform(-6, -3))
 
-    # Algorithm specific
     _hparam('epsilon', 0.3, lambda r: 0.3)
+
+    # Algorithm specific
 
     # PGD
     _hparam('pgd_n_steps', 7, lambda r: 7)
@@ -49,6 +50,17 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     # MART
     _hparam('mart_beta', 1.0, lambda r: r.uniform(0.1, 10.0))
 
+    # DALE (Gaussian-HMC)
+    _hparam('g_dale_n_steps', 7, lambda r: 7)
+    _hparam('g_dale_step_size', 0.01, lambda r: r.uniform(0.1, 0.5))
+    _hparam('g_dale_T', 0.1, lambda r: r.uniform(0.1, 10))
+    _hparam('g_dale_nu', 1.0, lambda r: r.uniform(0.1, 10.0))
+
+    # DALE (Laplacian-HMC)
+    _hparam('l_dale_n_steps', 7, lambda r: 7)
+    _hparam('l_dale_step_size', 0.1, lambda r: r.uniform(0.1, 0.5))
+    _hparam('l_dale_T', 1.0, lambda r: r.uniform(0.1, 10))
+    _hparam('l_dale_nu', 1.0, lambda r: r.uniform(0.1, 10.0))
 
     return hparams
 
