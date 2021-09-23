@@ -1,6 +1,18 @@
 import torch
 import hashlib
 import sys
+from functools import wraps
+from time import time
+
+def timing(f):
+    @wraps(f)
+    def wrap(*args, **kw):
+        ts = time()
+        result = f(*args, **kw)
+        te = time()
+        print(f'func:{f.__name__} took: {te-ts:.3f} sec')
+        return result
+    return wrap
 
 def seed_hash(*args):
     """Derive an integer hash from all args, for use as a random seed."""
