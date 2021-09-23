@@ -12,17 +12,20 @@ ALGORITHMS = [
     'FGSM',
     'TRADES',
     'ALP',
-    'CLP'
+    'CLP',
+    'Gaussian_DALE',
+    'Laplacian_DALE'
 ]
 
 class Algorithm(nn.Module):
-    def __init__(self, input_shape, num_classes, hparams):
+    def __init__(self, input_shape, num_classes, hparams, device):
         super(Algorithm, self).__init__()
         self.hparams = hparams
         self.classifier = networks.Classifier(
             input_shape, num_classes, hparams)
         self.optimizer = optimizers.Optimizer(
             self.classifier, hparams)
+        self.device = device
 
     def step(self, imgs, labels):
         raise NotImplementedError
@@ -31,8 +34,8 @@ class Algorithm(nn.Module):
         return self.classifier(imgs)
 
 class ERM(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams):
-        super(ERM, self).__init__(input_shape, num_classes, hparams)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(ERM, self).__init__(input_shape, num_classes, hparams, device)
 
     def step(self, imgs, labels):
         self.optimizer.zero_grad()
@@ -43,9 +46,9 @@ class ERM(Algorithm):
         return {'loss': loss.item()}
 
 class PGD(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams):
-        super(PGD, self).__init__(input_shape, num_classes, hparams)
-        self.attack = attacks.PGD_Linf(self.classifier, self.hparams)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(PGD, self).__init__(input_shape, num_classes, hparams, device)
+        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
 
     def step(self, imgs, labels):
 
@@ -58,9 +61,9 @@ class PGD(Algorithm):
         return {'loss': loss.item()}
 
 class FGSM(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams):
-        super(FGSM, self).__init__(input_shape, num_classes, hparams)
-        self.attack = attacks.FGSM_Linf(self.classifier, self.hparams)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(FGSM, self).__init__(input_shape, num_classes, hparams, device)
+        self.attack = attacks.FGSM_Linf(self.classifier, self.hparams, device)
 
     def step(self, imgs, labels):
 
@@ -73,10 +76,10 @@ class FGSM(Algorithm):
         return {'loss': loss.item()}
 
 class TRADES(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams):
-        super(TRADES, self).__init__(input_shape, num_classes, hparams)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(TRADES, self).__init__(input_shape, num_classes, hparams, device)
         self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')  # AR: let's write a method to do the log-softmax part
-        self.attack = attacks.TRADES_Linf(self.classifier, self.hparams)
+        self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device)
 
     def step(self, imgs, labels):
 
@@ -93,18 +96,18 @@ class TRADES(Algorithm):
         return {'loss': total_loss.item()}
 
 class LogitPairingBase(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams):
-        super(LogitPairingBase, self).__init__(input_shape, num_classes, hparams)
-        self.attack = attacks.PGD_Linf(self.classifier, self.hparams)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(LogitPairingBase, self).__init__(input_shape, num_classes, hparams, device)
+        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
 
     def pairing_loss(self, imgs, adv_imgs):
         logit_diff = self.predict(adv_imgs) - self.predict(imgs)
         return torch.norm(logit_diff, dim=1).mean()
 
 class ALP(LogitPairingBase):
-    def __init__(self, input_shape, num_classes, hparams):
-        super(ALP, self).__init__(input_shape, num_classes, hparams)
-        self.attack = attacks.PGD_Linf(self.classifier, self.hparams)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(ALP, self).__init__(input_shape, num_classes, hparams, device)
+        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
         
     def step(self, imgs, labels):
         adv_imgs = self.attack(imgs, labels)
@@ -118,9 +121,9 @@ class ALP(LogitPairingBase):
         return {'loss': total_loss.item()}
 
 class CLP(LogitPairingBase):
-    def __init__(self, input_shape, num_classes, hparams):
-        super(CLP, self).__init__(input_shape, num_classes, hparams)
-        self.attack = attacks.PGD_Linf(self.classifier, self.hparams)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(CLP, self).__init__(input_shape, num_classes, hparams, device)
+        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
 
     def step(self, imgs, labels):
         adv_imgs = self.attack(imgs, labels)
@@ -134,10 +137,10 @@ class CLP(LogitPairingBase):
         return {'loss': total_loss.item()}
 
 class MART(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams):
-        super(MART, self).__init__(input_shape, num_classes, hparams)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(MART, self).__init__(input_shape, num_classes, hparams, device)
         self.kl_loss_fn = nn.KLDivLoss(reduction='none')
-        self.attack = attacks.PGD_Linf(self.classifier, self.hparams)
+        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
 
     def step(self, imgs, labels):
         
@@ -165,11 +168,34 @@ class MMA(Algorithm):
 
 # with and without primal dual
 
-class DALE_GaussianHMC(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams):
-
+class Gaussian_DALE(Algorithm):
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(Gaussian_DALE, self).__init__(input_shape, num_classes, hparams, device)
+        self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
         
+    def step(self, imgs, labels):
+        adv_imgs = self.attack(imgs, labels)
+        self.optimizer.zero_grad()
+        clean_loss = F.cross_entropy(self.predict(imgs), labels)
+        robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
+        total_loss = clean_loss + self.hparams['g_dale_nu'] * robust_loss
+        total_loss.backward()
+        self.optimizer.step()
 
-class DALE_LaplacianHMC(Algorithm):
-    pass
+        return {'loss': total_loss.item()}
 
+class Laplacian_DALE(Algorithm):
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(Laplacian_DALE, self).__init__(input_shape, num_classes, hparams, device)
+        self.attack = attacks.LMC_Laplacian_Linf(self.classifier, self.hparams, device)
+
+    def step(self, imgs, labels):
+        adv_imgs = self.attack(imgs, labels)
+        self.optimizer.zero_grad()
+        clean_loss = F.cross_entropy(self.predict(imgs), labels)
+        robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
+        total_loss = clean_loss + self.hparams['l_dale_nu'] * robust_loss
+        total_loss.backward()
+        self.optimizer.step()
+
+        return {'loss': total_loss.item()}

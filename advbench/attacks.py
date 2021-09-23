@@ -3,17 +3,18 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class Attack(nn.Module):
-    def __init__(self, classifier, hparams):
+    def __init__(self, classifier, hparams, device):
         super(Attack, self).__init__()
         self.classifier = classifier
         self.hparams = hparams
+        self.device = device
 
     def forward(self, imgs, labels):
         raise NotImplementedError
 
 class Attack_Linf(Attack):
-    def __init__(self, classifier, hparams):
-        super(Attack_Linf, self).__init__(classifier, hparams)
+    def __init__(self, classifier, hparams, device):
+        super(Attack_Linf, self).__init__(classifier, hparams, device)
     
     def _clamp_perturbation(self, imgs, adv_imgs):
         """Clamp a perturbed image so that (1) the perturbation is bounded
@@ -25,13 +26,13 @@ class Attack_Linf(Attack):
         return torch.clamp(adv_imgs, 0.0, 1.0)
 
 class PGD_Linf(Attack_Linf):
-    def __init__(self, classifier, hparams):
-        super(PGD_Linf, self).__init__(classifier, hparams)
+    def __init__(self, classifier, hparams, device):
+        super(PGD_Linf, self).__init__(classifier, hparams, device)
     
     def forward(self, imgs, labels):
         self.classifier.eval()
 
-        adv_imgs = imgs.detach() + 0.001 * torch.randn(imgs.shape).cuda().detach() #AR: is this detach necessary?
+        adv_imgs = imgs.detach() + 0.001 * torch.randn(imgs.shape).to(self.device).detach() #AR: is this detach necessary?
         for _ in range(self.hparams['pgd_n_steps']):
             adv_imgs.requires_grad_(True)
             with torch.enable_grad():
@@ -44,14 +45,14 @@ class PGD_Linf(Attack_Linf):
         return adv_imgs.detach()    # this detach may not be necessary
 
 class TRADES_Linf(Attack_Linf):
-    def __init__(self, classifier, hparams):
-        super(TRADES_Linf, self).__init__(classifier, hparams)
+    def __init__(self, classifier, hparams, device):
+        super(TRADES_Linf, self).__init__(classifier, hparams, device)
         self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')  # AR: let's write a method to do the log-softmax part
 
     def forward(self, imgs, labels):
         self.classifier.eval()
 
-        adv_imgs = imgs.detach() + 0.001 * torch.randn(imgs.shape).cuda().detach()  #AR: is this detach necessary?
+        adv_imgs = imgs.detach() + 0.001 * torch.randn(imgs.shape).to(self.device).detach()  #AR: is this detach necessary?
         for _ in range(self.hparams['trades_n_steps']):
             adv_imgs.requires_grad_(True)
             with torch.enable_grad():
@@ -67,8 +68,8 @@ class TRADES_Linf(Attack_Linf):
         return adv_imgs.detach() # this detach may not be necessary
 
 class FGSM_Linf(Attack):
-    def __init__(self, classifier, hparams):
-        super(FGSM_Linf, self).__init__(classifier, hparams)
+    def __init__(self, classifier, hparams, device):
+        super(FGSM_Linf, self).__init__(classifier, hparams, device)
 
     def forward(self, imgs, labels):
         self.classifier.eval()
@@ -83,4 +84,47 @@ class FGSM_Linf(Attack):
 
         return adv_imgs.detach()
 
-# class LMC_Gaussian_Linf(Attack):
+class LMC_Gaussian_Linf(Attack_Linf):
+    def __init__(self, classifier, hparams, device):
+        super(LMC_Gaussian_Linf, self).__init__(classifier, hparams, device)
+
+    def forward(self, imgs, labels):
+        self.classifier.eval()
+        batch_size = imgs.size(0)
+
+        adv_imgs = imgs.detach() + 0.001 * torch.randn(imgs.shape).to(self.device).detach() #AR: is this detach necessary?
+        for _ in range(self.hparams['g_dale_n_steps']):
+            adv_imgs.requires_grad_(True)
+            with torch.enable_grad():
+                adv_loss = torch.log(1 - torch.softmax(self.classifier(adv_imgs), dim=1)[range(batch_size), labels]).mean()
+            grad = torch.autograd.grad(adv_loss, [adv_imgs])[0].detach()
+            noise = torch.sqrt(torch.tensor(2 * self.hparams['g_dale_step_size']) * torch.randn_like(adv_imgs).to(self.device).detach())
+
+            # NOTE(AR): This was working better with sign(grad)
+            adv_imgs = adv_imgs + self.hparams['g_dale_step_size'] / self.hparams['g_dale_T'] * grad + noise
+            adv_imgs = self._clamp_perturbation(imgs, adv_imgs)
+            
+        self.classifier.train()
+
+        return adv_imgs.detach()
+
+class LMC_Laplacian_Linf(Attack_Linf):
+    def __init__(self, classifier, hparams, device):
+        super(LMC_Laplacian_Linf, self).__init__(classifier, hparams, device)
+
+    def forward(self, imgs, labels):
+        self.classifier.eval()
+        batch_size = imgs.size(0)
+
+        adv_imgs = imgs.detach() + 0.001 * torch.randn(imgs.shape).to(self.device).detach() #AR: is this detach necessary?
+        for _ in range(self.hparams['l_dale_n_steps']):
+            adv_imgs.requires_grad_(True)
+            with torch.enable_grad():
+                adv_loss = torch.log(1 - torch.softmax(self.classifier(adv_imgs), dim=1)[range(batch_size), labels]).mean()
+            grad = torch.autograd.grad(adv_loss, [adv_imgs])[0].detach()
+            noise = torch.sqrt(torch.tensor(2 * self.hparams['l_dale_step_size']) * torch.randn_like(adv_imgs).to(self.device).detach())
+            adv_imgs = adv_imgs + self.hparams['l_dale_step_size'] * torch.sign(grad / self.hparams['l_dale_T'] + noise)
+            adv_imgs = self._clamp_perturbation(imgs, adv_imgs)
+
+        self.classifier.train()
+        return adv_imgs.detach()
