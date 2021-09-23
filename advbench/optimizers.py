@@ -6,7 +6,7 @@ def Optimizer(classifier, hparams):
 
     return optim.Adadelta(
         classifier.parameters(),
-        lr=hparams['learning_rate'])
+        lr=1.0)
 
     return optim.SGD(
         classifier.parameters(),
