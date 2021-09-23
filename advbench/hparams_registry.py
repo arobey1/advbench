@@ -40,7 +40,36 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     # PGD
     _hparam('pgd_n_steps', 7, lambda r: 7)
     _hparam('pgd_step_size', 0.1, lambda r: 0.1)
-    
 
+    # TRADES
+    _hparam('trades_n_steps', 7, lambda r: 7)
+    _hparam('trades_step_size', 0.1, lambda r: r.uniform(0.01, 0.1))
+    _hparam('trades_beta', 1.0, lambda r: r.uniform(0.1, 10.0))
+
+    # MART
+    _hparam('mart_beta', 1.0, lambda r: r.uniform(0.1, 10.0))
+
+
+    return hparams
+
+def test_hparams(algorithm: str, dataset: str):
+
+    hparams = {}
+
+    def _hparam(name, default_val):
+        """Define a hyperparameter for test adversaries."""
+
+        assert(name not in hparams)
+        hparams[name] = default_val
+
+    _hparam('epsilon', 0.3)
+
+    # PGD
+    _hparam('pgd_n_steps', 10)
+    _hparam('pgd_step_size', 0.1)
+
+    # TRADES
+    _hparam('trades_n_steps', 10)
+    _hparam('trades_step_size', 0.1)
 
     return hparams
