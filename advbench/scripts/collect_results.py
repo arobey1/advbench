@@ -51,14 +51,15 @@ if __name__ == '__main__':
 
             # one table for each dataset/eval_method pair
             t = prettytable.PrettyTable()
-            t.field_names = ['Training Algorithm', *[f'{m} Accuracy' for m in eval_methods]]
+            t.field_names = ['Training Algorithm', *[f'{m} Accuracy' for m in eval_methods], 'Output-Dir']
             print(f'\nSelection method: {adv} accuracy.')
             for alg in train_algs:
                 df = records[(records['Dataset'] == dataset) & (records['Train-Alg'] == alg)]
                 best_df = scrape_results(df, trials, adv)
                 test_df = best_df[best_df.Split == 'Test']
                 accs = [test_df[test_df['Eval-Method'] == m].iloc[0]['Accuracy'] for m in eval_methods]
-                t.add_row([alg, *accs])
+                output_dir = test_df.iloc[0]['Output-Dir']
+                t.add_row([alg, *accs, output_dir])
 
             print(t)
 
