@@ -98,10 +98,9 @@ class LMC_Gaussian_Linf(Attack_Linf):
             with torch.enable_grad():
                 adv_loss = torch.log(1 - torch.softmax(self.classifier(adv_imgs), dim=1)[range(batch_size), labels]).mean()
             grad = torch.autograd.grad(adv_loss, [adv_imgs])[0].detach()
-            noise = torch.sqrt(torch.tensor(2 * self.hparams['g_dale_step_size']) * torch.randn_like(adv_imgs).to(self.device).detach())
+            noise = torch.randn_like(adv_imgs).to(self.device).detach()
 
-            # NOTE(AR): This was working better with sign(grad)
-            adv_imgs = adv_imgs + self.hparams['g_dale_step_size'] / self.hparams['g_dale_T'] * grad + noise
+            adv_imgs = adv_imgs + self.hparams['g_dale_step_size'] * torch.sign(grad) + self.hparams['g_dale_noise_coeff'] * noise
             adv_imgs = self._clamp_perturbation(imgs, adv_imgs)
             
         self.classifier.train()
@@ -122,8 +121,8 @@ class LMC_Laplacian_Linf(Attack_Linf):
             with torch.enable_grad():
                 adv_loss = torch.log(1 - torch.softmax(self.classifier(adv_imgs), dim=1)[range(batch_size), labels]).mean()
             grad = torch.autograd.grad(adv_loss, [adv_imgs])[0].detach()
-            noise = torch.sqrt(torch.tensor(2 * self.hparams['l_dale_step_size']) * torch.randn_like(adv_imgs).to(self.device).detach())
-            adv_imgs = adv_imgs + self.hparams['l_dale_step_size'] * torch.sign(grad / self.hparams['l_dale_T'] + noise)
+            noise = torch.randn_like(adv_imgs).to(self.device).detach()
+            adv_imgs = adv_imgs + self.hparams['l_dale_step_size'] * torch.sign(grad + self.hparams['l_dale_noise_coeff'] * noise)
             adv_imgs = self._clamp_perturbation(imgs, adv_imgs)
 
         self.classifier.train()
