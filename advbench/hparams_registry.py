@@ -52,15 +52,21 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
 
     # DALE (Gaussian-HMC)
     _hparam('g_dale_n_steps', 7, lambda r: 7)
-    _hparam('g_dale_step_size', 0.01, lambda r: r.uniform(0.1, 0.5))
-    _hparam('g_dale_T', 0.1, lambda r: r.uniform(0.1, 10))
-    _hparam('g_dale_nu', 1.0, lambda r: r.uniform(0.1, 10.0))
+    _hparam('g_dale_step_size', 0.1, lambda r: 0.1)
+    _hparam('g_dale_noise_coeff', 0.001, lambda r: 10 ** r.uniform(-6.0, -2.0))
+    # _hparam('g_dale_nu', 1.0, lambda r: r.uniform(0.1, 10.0))
+    _hparam('g_dale_nu', 1.0, lambda r: 1.0)
 
     # DALE (Laplacian-HMC)
     _hparam('l_dale_n_steps', 7, lambda r: 7)
-    _hparam('l_dale_step_size', 0.1, lambda r: r.uniform(0.1, 0.5))
-    _hparam('l_dale_T', 1.0, lambda r: r.uniform(0.1, 10))
-    _hparam('l_dale_nu', 1.0, lambda r: r.uniform(0.1, 10.0))
+    _hparam('l_dale_step_size', 0.1, lambda r: 0.1)
+    _hparam('l_dale_noise_coeff', 0.001, lambda r: 10 ** r.uniform(-6.0, -2.0))
+    # _hparam('l_dale_nu', 1.0, lambda r: r.uniform(0.1, 10.0))
+    _hparam('l_dale_nu', 1.0, lambda r: 1.0)
+
+    # DALE-PD (Gaussian-HMC)
+    _hparam('g_dale_pd_step_size', 0.01, lambda r: 0.01)
+    _hparam('g_dale_pd_margin', 0.1, lambda r: 0.1)
 
     return hparams
 
