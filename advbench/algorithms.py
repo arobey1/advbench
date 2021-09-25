@@ -178,7 +178,7 @@ class Gaussian_DALE(Algorithm):
         self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(imgs), labels)
         robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
-        total_loss = clean_loss + self.hparams['g_dale_nu'] * robust_loss
+        total_loss = robust_loss + self.hparams['g_dale_nu'] * clean_loss
         total_loss.backward()
         self.optimizer.step()
 
@@ -194,8 +194,35 @@ class Laplacian_DALE(Algorithm):
         self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(imgs), labels)
         robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
-        total_loss = clean_loss + self.hparams['l_dale_nu'] * robust_loss
+        total_loss = robust_loss + self.hparams['l_dale_nu'] * clean_loss
         total_loss.backward()
         self.optimizer.step()
 
         return {'loss': total_loss.item()}
+
+class PrimalDualBase(Algorithm):
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(PrimalDualBase, self).__init__(input_shape, num_classes, hparams, device)
+        self.dual_params = {'dual_var': torch.tensor(1.0).to(self.device)}
+
+class Gaussian_DALE_PD(PrimalDualBase):
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(Gaussian_DALE_PD, self).__init__(input_shape, num_classes, hparams, device)
+        self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
+        self.pd_optimizer = optimizers.PrimalDualOptimizer(
+            parameters=self.dual_params,
+            margin=self.hparams['g_dale_pd_margin'],
+            eta=self.hparams['g_dale_pd_step_size'])
+
+    def step(self, imgs, labels):
+        adv_imgs = self.attack(imgs, labels)
+        self.optimizer.zero_grad()
+        clean_loss = F.cross_entropy(self.predict(imgs), labels)
+        robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
+        total_loss = robust_loss + self.dual_params['dual_var'] * clean_loss
+        total_loss.backward()
+        self.optimizer.step()
+        self.pd_optimizer.step(clean_loss.item())
+
+        return {'loss': total_loss.item(), 'dual_var': self.dual_params['dual_var']}
+
