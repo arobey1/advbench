@@ -9,7 +9,7 @@ DATASETS = ['CIFAR10', 'MNIST']
 def to_loaders(all_datasets, hparams):
     
     def _to_loader(split, dataset):
-        batch_size = hparams['batch_size'] if split == 'train' else 64
+        batch_size = hparams['batch_size'] if split == 'train' else 100
         return DataLoader(
             dataset=dataset, 
             batch_size=batch_size,
@@ -26,6 +26,8 @@ class AdvRobDataset(Dataset):
     NUM_CLASSES = None       # Subclasses should override
     N_EPOCHS = None          # Subclasses should override
     CHECKPOINT_FREQ = None   # Subclasses should override
+    LOG_INTERVAL = None      # Subclasses should override
+    HAS_LR_SCHEDULE = False  # Default, subclass may override
 
     def __init__(self):
         self.splits = dict.fromkeys(SPLITS)
@@ -35,8 +37,15 @@ class CIFAR10(AdvRobDataset):
  
     INPUT_SHAPE = (3, 32, 32)
     NUM_CLASSES = 10
-    N_EPOCHS = 100
+    N_EPOCHS = 120
     CHECKPOINT_FREQ = 10
+    EPSILON = 8/ 255.
+    LOG_INTERVAL = 100
+    HAS_LR_SCHEDULE = True
+
+    # test adversary parameters
+    ADV_STEP_SIZE = 2/255.
+    N_ADV_STEPS = 20
 
     def __init__(self, root):
         super(CIFAR10, self).__init__()
@@ -48,12 +57,26 @@ class CIFAR10(AdvRobDataset):
         test_transforms = transforms.ToTensor()
 
         train_data = CIFAR10_(root, train=True, transform=train_transforms)
-        self.splits['train'] = Subset(train_data, range(45000))
+        self.splits['train'] = train_data
+        # self.splits['train'] = Subset(train_data, range(45000))
 
         train_data = CIFAR10_(root, train=True, transform=train_transforms)
         self.splits['val'] = Subset(train_data, range(45000, 50000))
 
         self.splits['test'] = CIFAR10_(root, train=False, transform=test_transforms)
+
+    @staticmethod
+    def adjust_lr(optimizer, epoch, hparams):
+
+        lr = hparams['learning_rate']
+        if epoch >= 75:
+            lr = hparams['learning_rate'] * 0.1
+        if epoch >= 90:
+            lr = hparams['learning_rate'] * 0.01
+        if epoch >= 100:
+            lr = hparams['learning_rate'] * 0.001
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
 
 
 class MNIST(AdvRobDataset):
@@ -62,6 +85,13 @@ class MNIST(AdvRobDataset):
     NUM_CLASSES = 10
     N_EPOCHS = 20
     CHECKPOINT_FREQ = 10
+    EPSILON = 0.3
+    LOG_INTERVAL = 100
+    HAS_LR_SCHEDULE = False
+
+    # test adversary parameters
+    ADV_STEP_SIZE = 0.1
+    N_ADV_STEPS = 10
 
     def __init__(self, root):
         super(MNIST, self).__init__()
