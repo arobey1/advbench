@@ -70,8 +70,8 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     elif dataset == 'CIFAR10':
         _hparam('g_dale_n_steps', 10, lambda r: 10)
         _hparam('g_dale_step_size', 0.007, lambda r: 0.007)
-        _hparam('g_dale_noise_coeff', 0.0001, lambda r: 10 ** r.uniform(-6.0, -3.0))
-    _hparam('g_dale_nu', 1.0, lambda r: 1.0)
+        _hparam('g_dale_noise_coeff', 0.00001, lambda r: 0.00001)
+    _hparam('g_dale_nu', 0.5, lambda r: 0.5)
 
     # DALE (Laplacian-HMC)
     if dataset == 'MNIST':
@@ -80,8 +80,8 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
         _hparam('l_dale_noise_coeff', 0.001, lambda r: 10 ** r.uniform(-6.0, -2.0))
     elif dataset == 'CIFAR10':
         _hparam('l_dale_n_steps', 10, lambda r: 10)
-        _hparam('l_dale_step_size', 2/255., lambda r: 2/255.)
-        _hparam('l_dale_noise_coeff', 0.0001, lambda r: 10 ** r.uniform(-6.0, -3.0))
+        _hparam('l_dale_step_size', 0.007, lambda r: 0.007)
+        _hparam('l_dale_noise_coeff', 0.00001, lambda r: 0.00001)
     _hparam('l_dale_nu', 1.0, lambda r: 1.0)
 
     # DALE-PD (Gaussian-HMC)
