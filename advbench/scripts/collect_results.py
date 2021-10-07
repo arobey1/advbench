@@ -10,12 +10,14 @@ from advbench import datasets
 
 #TODO(AR): Currently no support for multiple trials
 
-def scrape_results(df, trials, adv):
+def scrape_results(df, trials, adv, split='Validation'):
+
+    assert split in ['Validation', 'Test']
 
     all_dfs = []
     for trial in trials:
         trial_df = df[(df['Trial-Seed'] == trial) & (df['Eval-Method'] == adv) \
-            & (df.Split == 'Validation')]
+            & (df.Split == split)]
 
         # extract the row and epoch with the best performance for given adversary
         best_row = trial_df[trial_df.Accuracy == trial_df.Accuracy.max()]
@@ -33,11 +35,12 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Collect results')
     parser.add_argument('--input_dir', type=str, required=True)
+    parser.add_argument('--depth', type=int, default=1, help='Results directories search depth')
     args = parser.parse_args()
 
     sys.stdout = misc.Tee(os.path.join(args.input_dir, 'results.txt'), 'w')
 
-    records = reporting.load_records(args.input_dir)
+    records = reporting.load_records(args.input_dir, depth=args.depth)
 
     eval_methods = records['Eval-Method'].unique()
     dataset_names = records['Dataset'].unique()
@@ -55,8 +58,9 @@ if __name__ == '__main__':
             print(f'\nSelection method: {adv} accuracy.')
             for alg in train_algs:
                 df = records[(records['Dataset'] == dataset) & (records['Train-Alg'] == alg)]
-                best_df = scrape_results(df, trials, adv)
+                best_df = scrape_results(df, trials, adv, split='Test')
                 test_df = best_df[best_df.Split == 'Test']
+
                 accs = [test_df[test_df['Eval-Method'] == m].iloc[0]['Accuracy'] for m in eval_methods]
                 output_dir = test_df.iloc[0]['Output-Dir']
                 t.add_row([alg, *accs, output_dir])
