@@ -38,6 +38,10 @@ class MNISTNet(nn.Module):
         return F.log_softmax(x, dim=1)    #TODO(AR): might need to remove softmax for KL div in TRADES
 
 
+"""Resnet implementation is based on the implementation found in:
+https://github.com/YisenWang/MART/blob/master/resnet.py
+"""
+
 class BasicBlock(nn.Module):
     expansion = 1
 
