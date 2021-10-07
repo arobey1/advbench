@@ -3,6 +3,9 @@ import torch
 import os
 import json
 import pandas as pd
+import time
+from humanfriendly import format_timespan
+
 
 from advbench import datasets
 from advbench import algorithms
@@ -25,6 +28,8 @@ def main(args, hparams, test_hparams):
         hparams,
         device).to(device)
 
+    adjust_lr = None if dataset.HAS_LR_SCHEDULE is False else dataset.adjust_lr
+
     test_attacks = {
         a: vars(attacks)[a](algorithm.classifier, test_hparams, device) for a in args.test_attacks}
     
@@ -36,12 +41,26 @@ def main(args, hparams, test_hparams):
 
     for epoch in range(0, dataset.N_EPOCHS):
 
+        if adjust_lr is not None:
+            adjust_lr(algorithm.optimizer, epoch, hparams)
+
         loss_meter = meters.AverageMeter()
+        timer = meters.TimeMeter()
+        epoch_start = time.time()
         for batch_idx, (imgs, labels) in enumerate(train_ldr):
 
+            timer.batch_start()
             imgs, labels = imgs.to(device), labels.to(device)
             step_vals = algorithm.step(imgs, labels)
             loss_meter.update(step_vals['loss'], n=imgs.size(0))
+
+            if batch_idx % dataset.LOG_INTERVAL == 0:
+                print(f'Train epoch {epoch}/{dataset.N_EPOCHS} ', end='')
+                print(f'[{batch_idx * imgs.size(0)}/{len(train_ldr.dataset)} ({100. * batch_idx / len(train_ldr):.0f}%)]\t', end='')
+                print(f'Loss: {step_vals["loss"]:.3f} (avg. {loss_meter.avg:.3f})\t', end='')
+                print(f'Time: {timer.batch_time.val:.3f} (avg. {timer.batch_time.avg:.3f})')
+
+            timer.batch_end()
 
         # save clean accuracies on validation/test sets
         val_clean_acc = misc.accuracy(algorithm, val_ldr, device)
@@ -60,8 +79,11 @@ def main(args, hparams, test_hparams):
             test_adv_acc = misc.adv_accuracy(algorithm, test_ldr, device, attack)
             add_results_row([epoch, test_adv_acc, attack_name, 'Test'])
 
+        epoch_end = time.time()
+
         # print results
         print(f'Epoch: {epoch+1}/{dataset.N_EPOCHS}\t', end='')
+        print(f'Epoch time: {format_timespan(epoch_end - epoch_start)}\t', end='')
         print(f'Training alg: {args.algorithm}\t', end='')
         print(f'Dataset: {args.dataset}\t', end='')
         print(f'Path: {args.output_dir}')
