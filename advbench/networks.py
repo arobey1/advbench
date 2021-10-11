@@ -2,9 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+from collections import OrderedDict
 
 def Classifier(input_shape, num_classes, hparams):
     if input_shape[0] == 1:
+        # return SmallCNN()
         return MNISTNet(input_shape, num_classes)
     elif input_shape[0] == 3:
         # return models.resnet18(num_classes=num_classes)
@@ -36,7 +38,6 @@ class MNISTNet(nn.Module):
         x = self.dropout2(x)
         x = self.fc2(x)
         return F.log_softmax(x, dim=1)    #TODO(AR): might need to remove softmax for KL div in TRADES
-
 
 """Resnet implementation is based on the implementation found in:
 https://github.com/YisenWang/MART/blob/master/resnet.py
