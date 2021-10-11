@@ -97,6 +97,7 @@ class LMC_Gaussian_Linf(Attack_Linf):
             adv_imgs.requires_grad_(True)
             with torch.enable_grad():
                 adv_loss = torch.log(1 - torch.softmax(self.classifier(adv_imgs), dim=1)[range(batch_size), labels]).mean()
+                # adv_loss = F.cross_entropy(self.classifier(adv_imgs), labels)
             grad = torch.autograd.grad(adv_loss, [adv_imgs])[0].detach()
             noise = torch.randn_like(adv_imgs).to(self.device).detach()
 
