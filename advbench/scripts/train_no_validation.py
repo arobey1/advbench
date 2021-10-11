@@ -42,21 +42,20 @@ def main(args, hparams, test_hparams):
         if adjust_lr is not None:
             adjust_lr(algorithm.optimizer, epoch, hparams)
 
-        loss_meter = meters.AverageMeter()
         timer = meters.TimeMeter()
         epoch_start = time.time()
         for batch_idx, (imgs, labels) in enumerate(train_ldr):
 
             timer.batch_start()
             imgs, labels = imgs.to(device), labels.to(device)
-            step_vals = algorithm.step(imgs, labels)
-            loss_meter.update(step_vals['loss'], n=imgs.size(0))
+            algorithm.step(imgs, labels)
 
             if batch_idx % dataset.LOG_INTERVAL == 0:
                 print(f'Train epoch {epoch}/{dataset.N_EPOCHS} ', end='')
                 print(f'[{batch_idx * imgs.size(0)}/{len(train_ldr.dataset)}', end=' ')
                 print(f'({100. * batch_idx / len(train_ldr):.0f}%)]\t', end='')
-                print(f'Loss: {step_vals["loss"]:.3f} (avg. {loss_meter.avg:.3f})\t', end='')
+                for name, meter in algorithm.meters.items():
+                    print(f'{name}: {meter.val:.3f} (avg. {meter.avg:.3f})\t', end='')
                 print(f'Time: {timer.batch_time.val:.3f} (avg. {timer.batch_time.avg:.3f})')
 
             timer.batch_end()
@@ -82,14 +81,20 @@ def main(args, hparams, test_hparams):
         print(f'Training alg: {args.algorithm}\t', end='')
         print(f'Dataset: {args.dataset}\t', end='')
         print(f'Path: {args.output_dir}')
-        print(f'Avg. train loss: {loss_meter.avg:.3f}\t', end='')
-        print(f'Clean val. accuracy: {test_clean_acc:.3f}\t', end='')
+        for name, meter in algorithm.meters.items():
+            print(f'Avg. train {name}: {meter.avg:.3f}\t', end='')
+        print(f'\nClean val. accuracy: {test_clean_acc:.3f}\t', end='')
         for attack_name, acc in zip(test_attacks.keys(), test_adv_accs):
             print(f'{attack_name} val. accuracy: {acc:.3f}\t', end='')
         print('\n')
 
         # save results dataframe to file
         results_df.to_pickle(os.path.join(args.output_dir, 'results.pkl'))
+
+        # reset all meters
+        meters_df = algorithm.meters_to_df(epoch)
+        meters_df.to_pickle(os.path.join(args.output_dir, 'meters.pkl'))
+        algorithm.reset_meters()
 
     torch.save(
         {'model': algorithm.state_dict()}, 

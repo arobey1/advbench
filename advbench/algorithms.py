@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
+import pandas as pd
 
 from advbench import networks
 from advbench import optimizers
@@ -32,12 +33,27 @@ class Algorithm(nn.Module):
         
         self.meters = OrderedDict()
         self.meters['loss'] = meters.AverageMeter()
+        self.meters_df = None
 
     def step(self, imgs, labels):
         raise NotImplementedError
 
     def predict(self, imgs):
         return self.classifier(imgs)
+
+    def reset_meters(self):
+        for meter in self.meters.values():
+            meter.reset()
+
+    def meters_to_df(self, epoch):
+        if self.meters_df is None:
+            columns = ['Epoch'] + list(self.meters.keys())
+            self.meters_df = pd.DataFrame(columns=columns)
+        print(self.meters_df)
+
+        values = [epoch] + [m.avg for m in self.meters.values()]
+        self.meters_df.loc[len(self.meters_df)] = values
+        return self.meters_df
 
 class ERM(Algorithm):
     def __init__(self, input_shape, num_classes, hparams, device):
@@ -48,8 +64,8 @@ class ERM(Algorithm):
         loss = F.cross_entropy(self.predict(imgs), labels)
         loss.backward()
         self.optimizer.step()
-
-        return {'loss': loss.item()}
+        
+        self.meters['loss'].update(loss.item(), n=imgs.size(0))
 
 class PGD(Algorithm):
     def __init__(self, input_shape, num_classes, hparams, device):
@@ -64,7 +80,7 @@ class PGD(Algorithm):
         loss.backward()
         self.optimizer.step()
 
-        return {'loss': loss.item()}        
+        self.meters['loss'].update(loss.item(), n=imgs.size(0))
 
 class FGSM(Algorithm):
     def __init__(self, input_shape, num_classes, hparams, device):
@@ -79,7 +95,7 @@ class FGSM(Algorithm):
         loss.backward()
         self.optimizer.step()
 
-        return {'loss': loss.item()}
+        self.meters['loss'].update(loss.item(), n=imgs.size(0))
 
 class TRADES(Algorithm):
     def __init__(self, input_shape, num_classes, hparams, device):
@@ -88,7 +104,7 @@ class TRADES(Algorithm):
         self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device)
         
         self.meters['clean loss'] = meters.AverageMeter()
-        self.meters['invariance loss'] = meters.AverageMeter()
+        self.meters['invarinace loss'] = meters.AverageMeter()
 
     def step(self, imgs, labels):
 
@@ -102,12 +118,17 @@ class TRADES(Algorithm):
         total_loss.backward()
         self.optimizer.step()
 
+        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
+        self.meters['invariance loss'].update(robust_loss.item(), n=imgs.size(0))
+
         return {'loss': total_loss.item()}
 
 class LogitPairingBase(Algorithm):
     def __init__(self, input_shape, num_classes, hparams, device):
         super(LogitPairingBase, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
+        self.meters['logit loss'] = meters.AverageMeter()
 
     def pairing_loss(self, imgs, adv_imgs):
         logit_diff = self.predict(adv_imgs) - self.predict(imgs)
@@ -117,7 +138,8 @@ class ALP(LogitPairingBase):
     def __init__(self, input_shape, num_classes, hparams, device):
         super(ALP, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
-        
+        self.meters['robust loss'] = meters.AverageMeter()
+
     def step(self, imgs, labels):
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
@@ -127,29 +149,38 @@ class ALP(LogitPairingBase):
         total_loss.backward()
         self.optimizer.step()
 
-        return {'loss': total_loss.item()}
+        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
+        self.meters['logit loss'].update(logit_pairing_loss.item(), n=imgs.size(0))
 
 class CLP(LogitPairingBase):
     def __init__(self, input_shape, num_classes, hparams, device):
         super(CLP, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
 
+        self.meters['clean loss'] = meters.AverageMeter()
+
     def step(self, imgs, labels):
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
-        robust_loss = F.cross_entropy(self.predict(imgs), labels)
+        clean_loss = F.cross_entropy(self.predict(imgs), labels)
         logit_pairing_loss = self.pairing_loss(imgs, adv_imgs)
-        total_loss = robust_loss + logit_pairing_loss
+        total_loss = clean_loss + logit_pairing_loss
         total_loss.backward()
         self.optimizer.step()
 
-        return {'loss': total_loss.item()}
+        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
+        self.meters['logit loss'].update(logit_pairing_loss.item(), n=imgs.size(0))
 
 class MART(Algorithm):
     def __init__(self, input_shape, num_classes, hparams, device):
         super(MART, self).__init__(input_shape, num_classes, hparams, device)
         self.kl_loss_fn = nn.KLDivLoss(reduction='none')
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
+
+        self.meters['robust loss'] = meters.AverageMeter()
+        self.meters['invariance loss'] = meters.AverageMeter()
 
     def step(self, imgs, labels):
         
@@ -169,19 +200,21 @@ class MART(Algorithm):
         loss.backward()
         self.optimizer.step()
 
-        return {'loss': loss.item()}
+        self.meters['loss'].update(loss.item(), n=imgs.size(0))
+        self.meters['robust loss'].update(loss_robust.item(), n=imgs.size(0))
+        self.meters['invariance loss'].update(loss_adv.item(), n=imgs.size(0))
 
 
 class MMA(Algorithm):
     pass
 
-# with and without primal dual
-
 class Gaussian_DALE(Algorithm):
     def __init__(self, input_shape, num_classes, hparams, device):
         super(Gaussian_DALE, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
-        
+        self.meters['clean loss'] = meters.AverageMeter()
+        self.meters['robust loss'] = meters.AverageMeter()
+
     def step(self, imgs, labels):
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
@@ -191,12 +224,16 @@ class Gaussian_DALE(Algorithm):
         total_loss.backward()
         self.optimizer.step()
 
-        return {'loss': total_loss.item()}
+        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
+        self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
 
 class Laplacian_DALE(Algorithm):
     def __init__(self, input_shape, num_classes, hparams, device):
         super(Laplacian_DALE, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.LMC_Laplacian_Linf(self.classifier, self.hparams, device)
+        self.meters['clean loss'] = meters.AverageMeter()
+        self.meters['robust loss'] = meters.AverageMeter()
 
     def step(self, imgs, labels):
         adv_imgs = self.attack(imgs, labels)
@@ -207,12 +244,17 @@ class Laplacian_DALE(Algorithm):
         total_loss.backward()
         self.optimizer.step()
 
-        return {'loss': total_loss.item()}
+        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
+        self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
 
 class PrimalDualBase(Algorithm):
     def __init__(self, input_shape, num_classes, hparams, device):
         super(PrimalDualBase, self).__init__(input_shape, num_classes, hparams, device)
         self.dual_params = {'dual_var': torch.tensor(1.0).to(self.device)}
+        self.meters['clean loss'] = meters.AverageMeter()
+        self.meters['robust loss'] = meters.AverageMeter()
+        self.meters['dual variable'] = meters.AverageMeter()
 
 class Gaussian_DALE_PD(PrimalDualBase):
     def __init__(self, input_shape, num_classes, hparams, device):
@@ -233,4 +275,7 @@ class Gaussian_DALE_PD(PrimalDualBase):
         self.optimizer.step()
         self.pd_optimizer.step(clean_loss.detach())
 
-        return {'loss': total_loss.item(), 'dual_var': self.dual_params['dual_var']}
+        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
+        self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
+        self.meters['dual variable'].update(self.dual_params['dual_var'], n=1)
