@@ -83,11 +83,11 @@ class MNIST(AdvRobDataset):
 
     INPUT_SHAPE = (1, 28, 28)
     NUM_CLASSES = 10
-    N_EPOCHS = 20
+    N_EPOCHS = 50
     CHECKPOINT_FREQ = 10
     EPSILON = 0.3
     LOG_INTERVAL = 100
-    HAS_LR_SCHEDULE = False
+    HAS_LR_SCHEDULE = True
 
     # test adversary parameters
     ADV_STEP_SIZE = 0.1
@@ -105,3 +105,16 @@ class MNIST(AdvRobDataset):
         self.splits['val'] = Subset(train_data, range(54000, 60000))
 
         self.splits['test'] = MNIST_(root, train=False, transform=xforms)
+
+    @staticmethod
+    def adjust_lr(optimizer, epoch, hparams):
+
+        lr = hparams['learning_rate']
+        if epoch >= 55:
+            lr = hparams['learning_rate'] * 0.1
+        if epoch >= 75:
+            lr = hparams['learning_rate'] * 0.01
+        if epoch >= 90:
+            lr = hparams['learning_rate'] * 0.001
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
