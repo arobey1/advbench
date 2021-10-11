@@ -26,5 +26,5 @@ class PrimalDualOptimizer:
 
     @staticmethod
     def relu(x):
-        return torch.max(0.0, x)
+        return x if x > 0 else torch.tensor(0).cuda()
 

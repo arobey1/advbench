@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from collections import OrderedDict
 
 from advbench import networks
 from advbench import optimizers
 from advbench import attacks
+from advbench.lib import meters
 
 ALGORITHMS = [
     'ERM',
@@ -14,7 +16,8 @@ ALGORITHMS = [
     'ALP',
     'CLP',
     'Gaussian_DALE',
-    'Laplacian_DALE'
+    'Laplacian_DALE',
+    'Gaussian_DALE_PD'
 ]
 
 class Algorithm(nn.Module):
@@ -26,6 +29,9 @@ class Algorithm(nn.Module):
         self.optimizer = optimizers.Optimizer(
             self.classifier, hparams)
         self.device = device
+        
+        self.meters = OrderedDict()
+        self.meters['loss'] = meters.AverageMeter()
 
     def step(self, imgs, labels):
         raise NotImplementedError
@@ -58,7 +64,7 @@ class PGD(Algorithm):
         loss.backward()
         self.optimizer.step()
 
-        return {'loss': loss.item()}
+        return {'loss': loss.item()}        
 
 class FGSM(Algorithm):
     def __init__(self, input_shape, num_classes, hparams, device):
@@ -78,8 +84,11 @@ class FGSM(Algorithm):
 class TRADES(Algorithm):
     def __init__(self, input_shape, num_classes, hparams, device):
         super(TRADES, self).__init__(input_shape, num_classes, hparams, device)
-        self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')  # AR: let's write a method to do the log-softmax part
+        self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')  # TODO(AR): let's write a method to do the log-softmax part
         self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device)
+        
+        self.meters['clean loss'] = meters.AverageMeter()
+        self.meters['invariance loss'] = meters.AverageMeter()
 
     def step(self, imgs, labels):
 
@@ -222,7 +231,6 @@ class Gaussian_DALE_PD(PrimalDualBase):
         total_loss = robust_loss + self.dual_params['dual_var'] * clean_loss
         total_loss.backward()
         self.optimizer.step()
-        self.pd_optimizer.step(clean_loss.item())
+        self.pd_optimizer.step(clean_loss.detach())
 
         return {'loss': total_loss.item(), 'dual_var': self.dual_params['dual_var']}
-
