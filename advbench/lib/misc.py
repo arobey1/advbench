@@ -3,6 +3,7 @@ import hashlib
 import sys
 from functools import wraps
 from time import time
+import pandas as pd
 
 def timing(f):
     @wraps(f)
@@ -19,6 +20,10 @@ def seed_hash(*args):
 
     args_str = str(args)
     return int(hashlib.md5(args_str.encode("utf-8")).hexdigest(), 16) % (2**31)
+
+def print_full_df(df):
+    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+        print(df)
 
 @torch.no_grad()
 def accuracy(algorithm, loader, device):
