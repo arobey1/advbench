@@ -49,7 +49,6 @@ class Algorithm(nn.Module):
         if self.meters_df is None:
             columns = ['Epoch'] + list(self.meters.keys())
             self.meters_df = pd.DataFrame(columns=columns)
-        print(self.meters_df)
 
         values = [epoch] + [m.avg for m in self.meters.values()]
         self.meters_df.loc[len(self.meters_df)] = values
@@ -278,4 +277,4 @@ class Gaussian_DALE_PD(PrimalDualBase):
         self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
-        self.meters['dual variable'].update(self.dual_params['dual_var'], n=1)
+        self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
