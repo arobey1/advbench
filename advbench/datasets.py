@@ -58,7 +58,7 @@ class CIFAR10(AdvRobDataset):
 
         train_data = CIFAR10_(root, train=True, transform=train_transforms)
         self.splits['train'] = train_data
-        # self.splits['train'] = Subset(train_data, range(45000))
+        # self.splits['train'] = Subset(train_data, range(5000))
 
         train_data = CIFAR10_(root, train=True, transform=train_transforms)
         self.splits['val'] = Subset(train_data, range(45000, 50000))
