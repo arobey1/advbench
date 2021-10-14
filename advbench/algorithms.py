@@ -18,7 +18,8 @@ ALGORITHMS = [
     'CLP',
     'Gaussian_DALE',
     'Laplacian_DALE',
-    'Gaussian_DALE_PD'
+    'Gaussian_DALE_PD',
+    'Gaussian_DALE_PD_Reverse'
 ]
 
 class Algorithm(nn.Module):
@@ -273,6 +274,30 @@ class Gaussian_DALE_PD(PrimalDualBase):
         total_loss.backward()
         self.optimizer.step()
         self.pd_optimizer.step(clean_loss.detach())
+
+        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
+        self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
+        self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
+
+class Gaussian_DALE_PD_Reverse(PrimalDualBase):
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(Gaussian_DALE_PD_Reverse, self).__init__(input_shape, num_classes, hparams, device)
+        self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
+        self.pd_optimizer = optimizers.PrimalDualOptimizer(
+            parameters=self.dual_params,
+            margin=self.hparams['g_dale_pd_margin'],
+            eta=self.hparams['g_dale_pd_step_size'])
+
+    def step(self, imgs, labels):
+        adv_imgs = self.attack(imgs, labels)
+        self.optimizer.zero_grad()
+        clean_loss = F.cross_entropy(self.predict(imgs), labels)
+        robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
+        total_loss = clean_loss + self.dual_params['dual_var'] * robust_loss
+        total_loss.backward()
+        self.optimizer.step()
+        self.pd_optimizer.step(robust_loss.detach())
 
         self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
