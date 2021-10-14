@@ -103,7 +103,7 @@ class TRADES(Algorithm):
         self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device)
         
         self.meters['clean loss'] = meters.AverageMeter()
-        self.meters['invarinace loss'] = meters.AverageMeter()
+        self.meters['invariance loss'] = meters.AverageMeter()
 
     def step(self, imgs, labels):
 
