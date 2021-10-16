@@ -19,7 +19,8 @@ ALGORITHMS = [
     'Gaussian_DALE',
     'Laplacian_DALE',
     'Gaussian_DALE_PD',
-    'Gaussian_DALE_PD_Reverse'
+    'Gaussian_DALE_PD_Reverse',
+    'KL_DALE_PD'
 ]
 
 class Algorithm(nn.Module):
@@ -298,6 +299,33 @@ class Gaussian_DALE_PD_Reverse(PrimalDualBase):
         total_loss.backward()
         self.optimizer.step()
         self.pd_optimizer.step(robust_loss.detach())
+
+        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
+        self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
+        self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
+
+class KL_DALE_PD(PrimalDualBase):
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(KL_DALE_PD, self).__init__(input_shape, num_classes, hparams, device)
+        self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device)
+        self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')
+        self.pd_optimizer = optimizers.PrimalDualOptimizer(
+            parameters=self.dual_params,
+            margin=self.hparams['g_dale_pd_margin'],
+            eta=self.hparams['g_dale_pd_step_size'])
+
+    def step(self, imgs, labels):
+        adv_imgs = self.attack(imgs, labels)
+        self.optimizer.zero_grad()
+        clean_loss = F.cross_entropy(self.predict(imgs), labels)
+        robust_loss = self.kl_loss_fn(
+            F.log_softmax(self.predict(adv_imgs), dim=1),
+            F.softmax(self.predict(imgs), dim=1))
+        total_loss = robust_loss + self.dual_params['dual_var'] * clean_loss
+        total_loss.backward()
+        self.optimizer.step()
+        self.pd_optimizer.step(clean_loss.detach())
 
         self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
