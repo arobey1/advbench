@@ -9,7 +9,7 @@ import os
 from advbench.lib import reporting, plotting
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Plot learning curve')
+    parser = argparse.ArgumentParser(description='Plot primal dual')
     parser.add_argument('--input_dir', type=str, required=True)
     args = parser.parse_args()
 
@@ -37,7 +37,7 @@ if __name__ == '__main__':
         hue='Eval-Method',
         ax=ax1, 
         marker='o')
-    name_dict = {'ERM': 'Clean', 'PGD_Linf': 'Adversarial'}
+    name_dict = {'ERM': 'Clean', 'PGD_Linf': r'PGD$^{20}$', 'FGSM_Linf': 'FGSM'}
     g.set(title='Test accuracy')
     plotting.remove_legend_title(ax1, name_dict=name_dict)
 
@@ -57,7 +57,7 @@ if __name__ == '__main__':
         linewidth=2,
         zorder=10,
         label=r'Margin $\rho$')
-    name_dict = {'clean loss': 'Clean', 'robust loss': 'Robust', r'Margin $\rho$': r'Margin $\rho$'}
+    name_dict = {'clean loss': r'Nominal $\ell_{nom}$', 'robust loss': r'Robust $\ell_{ro}$', r'Margin $\rho$': r'Margin $\rho$'}
     plotting.remove_legend_title(ax2, name_dict=name_dict)
 
     # plot dual variable
@@ -70,6 +70,7 @@ if __name__ == '__main__':
     g.set(ylabel='Dual variable', title='Dual variable')
 
     plt.subplots_adjust(bottom=0.15)
+    plt.tight_layout()
 
     save_path = os.path.join(args.input_dir, 'primal_dual.png')
     plt.savefig(save_path)
