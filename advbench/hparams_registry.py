@@ -36,7 +36,7 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
 
     if dataset == 'MNIST':
         _hparam('epsilon', 0.3, lambda r: 0.3)
-    else:
+    elif dataset == 'CIFAR10':
         _hparam('epsilon', 0.031, lambda r: 0.031)
 
     # Algorithm specific
@@ -55,7 +55,7 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
         _hparam('trades_step_size', 0.1, lambda r: r.uniform(0.01, 0.1))
         _hparam('trades_beta', 1.0, lambda r: r.uniform(0.1, 10.0))
     elif dataset == 'CIFAR10':
-        _hparam('trades_n_steps', 10, lambda r: 7)
+        _hparam('trades_n_steps', 10, lambda r: 15)
         _hparam('trades_step_size', 2/255., lambda r: r.uniform(0.01, 0.1))
         _hparam('trades_beta', 6.0, lambda r: r.uniform(0.1, 10.0))
 
@@ -73,7 +73,7 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     elif dataset == 'CIFAR10':
         _hparam('g_dale_n_steps', 10, lambda r: 10)
         _hparam('g_dale_step_size', 0.007, lambda r: 0.007)
-        _hparam('g_dale_noise_coeff', 1e-2, lambda r: 1e-2)
+        _hparam('g_dale_noise_coeff', 0, lambda r: 0)
     _hparam('g_dale_nu', 0.1, lambda r: 0.1)
 
     # DALE (Laplacian-HMC)
@@ -88,7 +88,7 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     _hparam('l_dale_nu', 0.1, lambda r: 0.1)
 
     # DALE-PD (Gaussian-HMC)
-    _hparam('g_dale_pd_step_size', 0.01, lambda r: 0.01)
+    _hparam('g_dale_pd_step_size', 0.001, lambda r: 0.001)
     _hparam('g_dale_pd_margin', 0.1, lambda r: 0.1)
 
     return hparams
@@ -110,7 +110,7 @@ def test_hparams(algorithm: str, dataset: str):
 
     ##### PGD #####
     if dataset == 'MNIST':
-        _hparam('pgd_n_steps', 20)
+        _hparam('pgd_n_steps', 10)
         _hparam('pgd_step_size', 0.1)
     elif dataset == 'CIFAR10':
         _hparam('pgd_n_steps', 20)
