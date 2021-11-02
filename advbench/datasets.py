@@ -37,9 +37,8 @@ class CIFAR10(AdvRobDataset):
  
     INPUT_SHAPE = (3, 32, 32)
     NUM_CLASSES = 10
-    N_EPOCHS = 120
+    N_EPOCHS = 200
     CHECKPOINT_FREQ = 10
-    EPSILON = 8/ 255.
     LOG_INTERVAL = 100
     HAS_LR_SCHEDULE = True
 
@@ -67,13 +66,12 @@ class CIFAR10(AdvRobDataset):
 
     @staticmethod
     def adjust_lr(optimizer, epoch, hparams):
-
         lr = hparams['learning_rate']
-        if epoch >= 75:
+        if epoch >= 150:
             lr = hparams['learning_rate'] * 0.1
-        if epoch >= 90:
+        if epoch >= 175:
             lr = hparams['learning_rate'] * 0.01
-        if epoch >= 100:
+        if epoch >= 190:
             lr = hparams['learning_rate'] * 0.001
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
@@ -85,9 +83,8 @@ class MNIST(AdvRobDataset):
     NUM_CLASSES = 10
     N_EPOCHS = 50
     CHECKPOINT_FREQ = 10
-    EPSILON = 0.3
     LOG_INTERVAL = 100
-    HAS_LR_SCHEDULE = True
+    HAS_LR_SCHEDULE = False
 
     # test adversary parameters
     ADV_STEP_SIZE = 0.1
@@ -99,7 +96,8 @@ class MNIST(AdvRobDataset):
         xforms = transforms.ToTensor()
 
         train_data = MNIST_(root, train=True, transform=xforms)
-        self.splits['train'] = Subset(train_data, range(54000))
+        self.splits['train'] = train_data
+        # self.splits['train'] = Subset(train_data, range(60000))
 
         train_data = MNIST_(root, train=True, transform=xforms)
         self.splits['val'] = Subset(train_data, range(54000, 60000))
