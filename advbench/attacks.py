@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributions.laplace import Laplace
 
 class Attack(nn.Module):
     def __init__(self, classifier, hparams, device):
@@ -115,6 +116,7 @@ class LMC_Laplacian_Linf(Attack_Linf):
     def forward(self, imgs, labels):
         self.classifier.eval()
         batch_size = imgs.size(0)
+        noise_dist = Laplace(torch.tensor(0.), torch.tensor(1.))
 
         adv_imgs = imgs.detach() + 0.001 * torch.randn(imgs.shape).to(self.device).detach() #AR: is this detach necessary?
         for _ in range(self.hparams['l_dale_n_steps']):
@@ -122,7 +124,7 @@ class LMC_Laplacian_Linf(Attack_Linf):
             with torch.enable_grad():
                 adv_loss = torch.log(1 - torch.softmax(self.classifier(adv_imgs), dim=1)[range(batch_size), labels]).mean()
             grad = torch.autograd.grad(adv_loss, [adv_imgs])[0].detach()
-            noise = torch.randn_like(adv_imgs).to(self.device).detach()
+            noise = noise_dist.sample(grad.shape)
             adv_imgs = adv_imgs + self.hparams['l_dale_step_size'] * torch.sign(grad + self.hparams['l_dale_noise_coeff'] * noise)
             adv_imgs = self._clamp_perturbation(imgs, adv_imgs)
 
