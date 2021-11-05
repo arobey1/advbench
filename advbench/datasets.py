@@ -4,6 +4,7 @@ import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10 as CIFAR10_
 from torchvision.datasets import MNIST as MNIST_
 
+import torch
 import numpy as np
 
 SPLITS = ['train', 'val', 'test']
@@ -40,7 +41,7 @@ class CIFAR10(AdvRobDataset):
  
     INPUT_SHAPE = (3, 32, 32)
     NUM_CLASSES = 10
-    N_EPOCHS = 200
+    N_EPOCHS = 115
     CHECKPOINT_FREQ = 10
     LOG_INTERVAL = 100
     HAS_LR_SCHEDULE = True
@@ -74,12 +75,12 @@ class CIFAR10(AdvRobDataset):
 
     @staticmethod
     def adjust_lr(optimizer, epoch, hparams):
-        lr = hparams['learning_rate']
-        if epoch >= 150:
+        lr = hparams['learning_rate'] 
+        if epoch >= 75:        # 150
             lr = hparams['learning_rate'] * 0.1
-        if epoch >= 175:
+        if epoch >= 100:        # 175
             lr = hparams['learning_rate'] * 0.01
-        if epoch >= 190:
+        if epoch >= 110:        # 190
             lr = hparams['learning_rate'] * 0.001
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
@@ -132,14 +133,11 @@ class NumpyToTensorDataset(Dataset):
         self.images = images[:num]
         self.labels = labels[:num]
 
-        self.transform = transforms.Compose([
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor()])
+        self.transform = transforms.ToTensor()
 
     def __getitem__(self, index):
         img, label = self.images[index], self.labels[index]
-        return self.transform(img), label    
+        return self.transform(img).float(), label
     
     def __len__(self):
         return self.images.shape[0]
