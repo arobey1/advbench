@@ -89,7 +89,7 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
 
     # DALE-PD (Gaussian-HMC)
     _hparam('g_dale_pd_step_size', 0.001, lambda r: 0.001)
-    _hparam('g_dale_pd_margin', 0.1, lambda r: 0.1)
+    _hparam('g_dale_pd_margin', 1.1, lambda r: 0.1)
 
     return hparams
 

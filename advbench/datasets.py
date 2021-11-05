@@ -1,7 +1,10 @@
 from torch.utils.data import Dataset, Subset, DataLoader
+from torch.utils.data.dataset import ConcatDataset
 import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10 as CIFAR10_
 from torchvision.datasets import MNIST as MNIST_
+
+import numpy as np
 
 SPLITS = ['train', 'val', 'test']
 DATASETS = ['CIFAR10', 'MNIST']
@@ -56,8 +59,13 @@ class CIFAR10(AdvRobDataset):
         test_transforms = transforms.ToTensor()
 
         train_data = CIFAR10_(root, train=True, transform=train_transforms)
-        self.splits['train'] = train_data
-        # self.splits['train'] = Subset(train_data, range(5000))
+
+        with np.load('advbench/data/cifar10_ddpm.npz') as f:
+            extra_images, extra_labels = f['image'], f['label']
+        extra_data = NumpyToTensorDataset(extra_images, extra_labels, num=200_000)
+        all_data = ConcatDataset([train_data, extra_data])
+
+        self.splits['train'] = all_data
 
         train_data = CIFAR10_(root, train=True, transform=train_transforms)
         self.splits['val'] = Subset(train_data, range(45000, 50000))
@@ -116,3 +124,22 @@ class MNIST(AdvRobDataset):
             lr = hparams['learning_rate'] * 0.001
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
+
+
+class NumpyToTensorDataset(Dataset):
+    def __init__(self, images, labels, num):
+
+        self.images = images[:num]
+        self.labels = labels[:num]
+
+        self.transform = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor()])
+
+    def __getitem__(self, index):
+        img, label = self.images[index], self.labels[index]
+        return self.transform(img), label    
+    
+    def __len__(self):
+        return self.images.shape[0]
