@@ -65,6 +65,7 @@ class CIFAR10(AdvRobDataset):
             extra_images, extra_labels = f['image'], f['label']
         extra_data = NumpyToTensorDataset(extra_images, extra_labels, num=200_000)
         all_data = ConcatDataset([train_data, extra_data])
+        # all_data = extra_data
 
         self.splits['train'] = all_data
 
@@ -137,7 +138,7 @@ class NumpyToTensorDataset(Dataset):
 
     def __getitem__(self, index):
         img, label = self.images[index], self.labels[index]
-        return self.transform(img).float(), label
+        return self.transform(img).float(), np.int64(label)
     
     def __len__(self):
         return self.images.shape[0]
