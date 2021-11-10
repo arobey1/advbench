@@ -337,16 +337,19 @@ class KL_DALE_Multi_PD(PrimalDualBase):
     def __init__(self, input_shape, num_classes, hparams, device):
         super(KL_DALE_Multi_PD, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.LMC_KL_Multi_Linf(self.classifier, self.hparams, device)
+        # self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device)
         self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
             parameters=self.dual_params,
-            margin=self.hparams['l_dale_pd_margin'],
-            eta=self.hparams['l_dale_pd_step_size'])
+            margin=self.hparams['g_dale_pd_margin'],
+            eta=self.hparams['g_dale_pd_step_size'])
 
     def step(self, imgs, labels):
         adv_imgs_batch = self.attack(imgs, labels)
         clean_imgs_batch = torch.vstack([imgs for _ in range(self.hparams['l_dale_n_delta'])])
+        # clean_imgs_batch = imgs
 
+        self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(imgs), labels)
         robust_loss = self.kl_loss_fn(
             F.log_softmax(self.predict(adv_imgs_batch), dim=1),

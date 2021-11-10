@@ -84,7 +84,7 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     elif dataset == 'CIFAR10':
         _hparam('l_dale_n_steps', 10, lambda r: 10)
         _hparam('l_dale_step_size', 0.007, lambda r: 0.007)
-        _hparam('l_dale_noise_coeff', 1e-3, lambda r: 1e-3)
+        _hparam('l_dale_noise_coeff', 0, lambda r: 1e-3)
     _hparam('l_dale_nu', 0.1, lambda r: 0.1)
 
     # DALE-PD (Gaussian-HMC)
@@ -93,8 +93,8 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
 
     # DALE-PD Laplacian KL
     _hparam('l_dale_pd_step_size', 0.001, lambda r: 0.001)
-    _hparam('l_dale_pd_margin', 1.0, lambda r: 1.0)
-    _hparam('l_dale_n_delta', 2, lambda r: 5)
+    _hparam('l_dale_pd_margin', 0.8, lambda r: 1.0)
+    _hparam('l_dale_n_delta', 3, lambda r: 5)
 
     return hparams
 
