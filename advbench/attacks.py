@@ -130,3 +130,34 @@ class LMC_Laplacian_Linf(Attack_Linf):
 
         self.classifier.train()
         return adv_imgs.detach()
+
+class LMC_KL_Multi_Linf(Attack_Linf):
+    def __init__(self, classifier, hparams, device):
+        super(LMC_KL_Multi_Linf, self).__init__(classifier, hparams, device)
+
+    def forward(self, imgs, labels):
+        self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')  # AR: let's write a method to do the log-softmax part
+        noise_dist = Laplace(torch.tensor(0.), torch.tensor(1.))
+        collect_deltas_after = self.hparams['trades_n_steps'] - self.hparams['l_dale_n_delta']
+        all_adv_imgs = []
+
+        self.classifier.eval()
+
+        adv_imgs = imgs.detach() + 0.001 * torch.randn(imgs.shape).to(self.device).detach()  #AR: is this detach necessary?
+        for step in range(self.hparams['trades_n_steps']):
+            adv_imgs.requires_grad_(True)
+            with torch.enable_grad():
+                adv_loss = self.kl_loss_fn(
+                    F.log_softmax(self.classifier(adv_imgs), dim=1),   # AR: Note that this means that we can't have softmax at output of classifier
+                    F.softmax(self.classifier(imgs), dim=1))
+            
+            grad = torch.autograd.grad(adv_loss, [adv_imgs])[0].detach()
+            noise = noise_dist.sample(grad.shape).to(self.device)
+            adv_imgs = adv_imgs + self.hparams['trades_step_size'] * torch.sign(grad + self.hparams['l_dale_noise_coeff'] * noise)
+            adv_imgs = self._clamp_perturbation(imgs, adv_imgs)
+
+            if step >= collect_deltas_after:
+                all_adv_imgs.append(adv_imgs.detach())
+        
+        self.classifier.train()
+        return torch.vstack(all_adv_imgs)
