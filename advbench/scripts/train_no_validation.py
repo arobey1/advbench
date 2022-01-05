@@ -90,8 +90,9 @@ def main(args, hparams, test_hparams):
         print(f'Training alg: {args.algorithm}\t', end='')
         print(f'Dataset: {args.dataset}\t', end='')
         print(f'Path: {args.output_dir}')
+        print('Avg. training losses:')
         for name, meter in algorithm.meters.items():
-            print(f'Avg. train {name}: {meter.avg:.3f}\t', end='')
+            print(f'\t{name}: {meter.avg:.3f}', end='')
         print('\nAccuracies:')
         print(f'\tClean: {test_clean_acc:.3f}')
         print(f'\tAugmented: {test_aug_acc:.3f}')
