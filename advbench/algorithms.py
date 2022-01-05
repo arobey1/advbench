@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 import pandas as pd
+import numpy as np
 
 from advbench import networks
 from advbench import optimizers
@@ -20,7 +21,9 @@ ALGORITHMS = [
     'Laplacian_DALE',
     'Gaussian_DALE_PD',
     'Gaussian_DALE_PD_Reverse',
-    'KL_DALE_PD'
+    'KL_DALE_PD',
+    'FuncNorm',
+    'CVaR_SGD'
 ]
 
 class Algorithm(nn.Module):
@@ -57,10 +60,10 @@ class Algorithm(nn.Module):
         return self.meters_df
 
 class ERM(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
+    def __init__(self, input_shape, num_classes, hparams, device, n_data):
         super(ERM, self).__init__(input_shape, num_classes, hparams, device)
 
-    def step(self, imgs, labels):
+    def step(self, imgs, labels, batch_idx=None):
         self.optimizer.zero_grad()
         loss = F.cross_entropy(self.predict(imgs), labels)
         loss.backward()
@@ -69,11 +72,11 @@ class ERM(Algorithm):
         self.meters['loss'].update(loss.item(), n=imgs.size(0))
 
 class PGD(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
+    def __init__(self, input_shape, num_classes, hparams, device, n_data):
         super(PGD, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
 
-    def step(self, imgs, labels):
+    def step(self, imgs, labels, batch_idx=None):
 
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
@@ -82,6 +85,97 @@ class PGD(Algorithm):
         self.optimizer.step()
 
         self.meters['loss'].update(loss.item(), n=imgs.size(0))
+
+class FuncNorm(Algorithm):
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(FuncNorm, self).__init__(input_shape, num_classes, hparams, device)
+
+    def step(self, imgs, labels):
+
+        self.optimizer.zero_grad()
+        loss = self.compute_norm_estimate(imgs, labels)
+        loss.backward()
+        self.optimizer.step()
+
+    def compute_norm_estimate(self, imgs, labels):
+
+        # sample deltas using the path HMC approach from Rice et al.
+        deltas = self.sample(imgs, labels)
+        expand_labels = labels[None].expand(m, *labels.shape).transpose(0, 1).contiguous().view(-1)
+        expand_imgs = (imgs[None] + deltas).transpose(0, 1).contiguous().view(-1, * imgs.shape[1:])
+
+        # calculate loss with estimate of L^p norm
+        preds = model(torch.clamp(expand_imgs, min=0, max=1))
+        loss = F.cross_entropy(preds, labels)
+        loss = loss.view(imgs.size(0), self.hparams['func_norm_m'])
+        loss = torch.exp(torch.log(loss + 1e-10).sum(dim=1) / self.hparams['func_norm_m'])
+        return loss.mean()
+
+    def sample(self, imgs, labels):
+        
+        batch_size = imgs.size(0)
+        p, m = self.hparams['func_norm_p'], self.hparams['func_norm_m']
+        sigma, path_len = self.hparams['func_norm_sigma'], self.hparams['func_norm_path_len']
+        alpha = path_len * sigma ** 2 / self.hparams['func_norm_n_steps']
+        ts = np.linspace(0, p, m)
+
+        eps = torch.tensor(-self.hparams['epsilon'], dtype=imgs.dtype).view(1, 1, 1).to(self.device)
+        lower_limit = torch.max(-imgs, eps)
+        upper_limit = torch.min(1 - imgs, eps)
+        deltas = (lower_limit - upper_limit) * torch.rand_like(imgs) + upper_limit
+        deltas.requires_grad = True
+
+        for i, t in enumerate(ts):
+            mom = torch.randn_like(imgs).to(self.device) * sigma
+            preds = self.classifier(imgs + deltas)
+            loss = F.cross_entropy(preds, labels, reduction='none')
+            log_loss = t * torch.log(loss + 1e-10).sum()
+            log_loss.backward()
+
+            # Compute Hamiltonian
+            H_delta = - log_loss + (torch.norm(mom.view(batch_size, -1), dim=1) ** 2 / sigma ** 2) / 2 
+
+            # Half step of momentum
+            mom += 0.5 * alpha * deltas.grad
+            proposal = deltas.data
+
+            for j in range(self.hparams['func_norm_n_steps']):
+                # Full step of position
+                proposal = proposal.data + alpha * mom / sigma ** 2
+
+                # Reflection
+                while len(torch.where(proposal < lower_limit)[0]) > 0 or len(torch.where(proposal > upper_limit)[0]) > 0:
+                    bad_idx_lower = torch.where(proposal < lower_limit)
+
+                    # Check lower bound
+                    if len(bad_idx_lower[0]) > 0:
+                        proposal.data[bad_idx_lower] = 2 * lower_limit[bad_idx_lower] - proposal.data[bad_idx_lower]
+                        mom[bad_idx_lower] = -mom[bad_idx_lower]
+
+                    # Check upper bound
+                    bad_idx_upper = torch.where(proposal > upper_limit)
+                    if len(bad_idx_upper[0]) > 0:
+                        proposal.data[bad_idx_upper] = 2 * upper_limit[bad_idx_upper] - proposal.data[bad_idx_upper]
+                        mom[bad_idx_upper] = -mom[bad_idx_upper]
+
+                proposal.requires_grad = True
+                next_preds = self.classifier(imgs + proposal)
+                next_loss = F.cross_entropy(next_preds, labels, reduction=None)
+                next_log_loss = t * torch.log(next_loss + 1e-10).sum()
+                next_log_loss.backward()
+                
+                # Full step of momentum
+                if j != self.hparams['func_norm_n_steps'] - 1:
+                    mom += alpha * proposal.grad 
+
+                next_H_delta = -next_log_loss + (torch.norm(mom.view(batch_size, -1), dim=1) ** 2 / sigma ** 2) / 2
+                change_in_H = next_H_delta - H_delta
+                u = torch.zeros_like(change_in_H).uniform_(0, 1)
+                idx_accept = torch.where(u <= torch.exp(-change_in_H))
+                deltas.data[idx_accept] = proposal.data[idx_accept]
+                deltas.grad.zero_()
+
+        return deltas.detach()
 
 class FGSM(Algorithm):
     def __init__(self, input_shape, num_classes, hparams, device):
@@ -280,6 +374,78 @@ class Gaussian_DALE_PD(PrimalDualBase):
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
+
+class CVaR_SGD_Autograd(Algorithm):
+    def __init__(self, input_shape, num_classes, hparams, device, n_data):
+        super(CVaR_SGD_Autograd, self).__init__(input_shape, num_classes, hparams, device)
+        self.cvar_ts = torch.ones(size=(n_data,)).to(self.device)
+        self.meters['avg t'] = meters.AverageMeter()
+        # self.meters['cvar'] = meters.AverageMeter()
+
+    @staticmethod
+    def img_clamp(imgs):
+        return torch.clamp(imgs, 0.0, 1.0)
+
+    def step(self, imgs, labels, batch_idx):
+
+        eta_t = self.hparams['cvar_sgd_t_step_size']
+        beta = self.hparams['cvar_sgd_beta']
+        eps = self.hparams['epsilon']
+        start_idx = batch_idx * self.hparams['batch_size']
+        end_idx = (batch_idx + 1) * self.hparams['batch_size']
+
+
+class CVaR_SGD(Algorithm):
+    def __init__(self, input_shape, num_classes, hparams, device, n_data):
+        super(CVaR_SGD, self).__init__(input_shape, num_classes, hparams, device)
+        self.cvar_ts = torch.ones(size=(n_data,)).to(self.device)
+        self.meters['avg t'] = meters.AverageMeter()
+        self.meters['plain loss'] = meters.AverageMeter()
+
+    @staticmethod
+    def img_clamp(imgs):
+        return torch.clamp(imgs, 0.0, 1.0)
+
+    def sample_deltas(self, imgs):
+        eps = self.hparams['epsilon']
+        return 2 * eps * torch.rand_like(imgs) - eps
+
+    def step(self, imgs, labels, batch_idx):
+
+        eta_t = self.hparams['cvar_sgd_t_step_size']
+        beta = self.hparams['cvar_sgd_beta']
+        M = float(self.hparams['cvar_sgd_M'])
+        start_idx = batch_idx * self.hparams['batch_size']
+        end_idx = (batch_idx + 1) * self.hparams['batch_size']
+
+        # select subset of ts
+        ts = self.cvar_ts[start_idx:end_idx]
+
+        self.optimizer.zero_grad()
+        for _ in range(self.hparams['cvar_sgd_n_steps']):
+
+            plain_loss, cvar_loss, indicator_sum = 0, 0, 0
+            for _ in range(self.hparams['cvar_sgd_M']):
+                pert_imgs = self.img_clamp(imgs + self.sample_deltas(imgs))
+                curr_loss = F.cross_entropy(self.predict(pert_imgs), labels, reduction='none')
+                indicator_sum += torch.where(curr_loss > ts, torch.ones_like(ts), torch.zeros_like(ts))
+
+                plain_loss += curr_loss.mean()
+                cvar_loss += F.relu(curr_loss - ts)                
+    
+            indicator_avg = indicator_sum / M
+            cvar_loss = (ts + cvar_loss / (M * beta)).mean()
+            
+            # gradient update on ts
+            self.cvar_ts[start_idx:end_idx] = ts - eta_t * (1 - (1 / beta) * indicator_avg)
+
+        # update on neural network
+        cvar_loss.backward()
+        self.optimizer.step()
+
+        self.meters['loss'].update(cvar_loss.item(), n=imgs.size(0))
+        self.meters['avg t'].update(self.cvar_ts[start_idx:end_idx].mean().item(), n=imgs.size(0))
+        self.meters['plain loss'].update(plain_loss.item() / M, n=imgs.size(0))
 
 class Gaussian_DALE_PD_Reverse(PrimalDualBase):
     def __init__(self, input_shape, num_classes, hparams, device):
