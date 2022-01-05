@@ -23,7 +23,8 @@ def main(args, hparams, test_hparams):
         dataset.INPUT_SHAPE, 
         dataset.NUM_CLASSES,
         hparams,
-        device).to(device)
+        device,
+        len(train_ldr.dataset)).to(device)
 
     adjust_lr = None if dataset.HAS_LR_SCHEDULE is False else dataset.adjust_lr
 
@@ -48,7 +49,7 @@ def main(args, hparams, test_hparams):
 
             timer.batch_start()
             imgs, labels = imgs.to(device), labels.to(device)
-            algorithm.step(imgs, labels)
+            algorithm.step(imgs, labels, batch_idx)
 
             if batch_idx % dataset.LOG_INTERVAL == 0:
                 print(f'Train epoch {epoch}/{dataset.N_EPOCHS} ', end='')
@@ -60,11 +61,18 @@ def main(args, hparams, test_hparams):
 
             timer.batch_end()
 
-        # save clean accuracies on validation/test sets
+        # save clean accuracies on test sets
         test_clean_acc = misc.accuracy(algorithm, test_ldr, device)
         add_results_row([epoch, test_clean_acc, 'ERM', 'Test'])
 
-        # save adversarial accuracies on validation/test sets
+        # save quantile accuracies on test sets
+        beta, eps, n_samp = hparams['cvar_sgd_beta'], hparams['epsilon'], 100
+        test_aug_acc, test_aug_indiv_accs, test_quant_indiv_accs, test_quant_acc = misc.augmented_accuracy(
+            algorithm, test_ldr, device, beta, eps, n_samp)
+        add_results_row([epoch, test_aug_acc, 'Augmented-ERM', 'Test'])
+        add_results_row([epoch, test_quant_acc, f'{beta}-Quantile', 'Test'])
+
+        # save adversarial accuracies on test sets
         test_adv_accs = []
         for attack_name, attack in test_attacks.items():
             test_adv_acc = misc.adv_accuracy(algorithm, test_ldr, device, attack)
@@ -77,13 +85,15 @@ def main(args, hparams, test_hparams):
         # print results
         print(f'Epoch: {epoch+1}/{dataset.N_EPOCHS}\t', end='')
         print(f'Epoch time: {format_timespan(epoch_end - epoch_start)}\t', end='')
-        print(f'Total time: {format_timespan(total_time)}\t', end='')
+        print(f'Total time: {format_timespan(total_time)}')
         print(f'Training alg: {args.algorithm}\t', end='')
         print(f'Dataset: {args.dataset}\t', end='')
         print(f'Path: {args.output_dir}')
         for name, meter in algorithm.meters.items():
             print(f'Avg. train {name}: {meter.avg:.3f}\t', end='')
         print(f'\nClean val. accuracy: {test_clean_acc:.3f}\t', end='')
+        print(f'Augmented val. accuracy: {test_aug_acc:.3f}\t', end='')
+        print(f'{beta}-Quantile val. accuracy: {test_quant_acc:.3f}\t', end='')
         for attack_name, acc in zip(test_attacks.keys(), test_adv_accs):
             print(f'{attack_name} val. accuracy: {acc:.3f}\t', end='')
         print('\n')
