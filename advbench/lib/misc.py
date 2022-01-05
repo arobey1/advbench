@@ -58,6 +58,49 @@ def adv_accuracy(algorithm, loader, device, attack):
 
     return 100. * correct / total
 
+def augmented_accuracy(algorithm, loader, device, beta, eps, n_samples):
+
+    def img_clamp(imgs):
+        return torch.clamp(imgs, 0.0, 1.0)
+
+    correct, total = 0, 0
+    correct_indiv = []
+
+    algorithm.eval()
+    for imgs, labels in loader:
+        imgs, labels = imgs.to(device), labels.to(device)
+
+        batch_correct_ls = []
+        for _ in range(n_samples):
+            with torch.no_grad():
+
+                # sample deltas and pass perturbed images through model
+                samp_deltas = 2 * eps * torch.rand_like(imgs) - eps
+                output = algorithm.predict(img_clamp(imgs + samp_deltas))
+                pert_pred = output.argmax(dim=1, keepdim=True)
+
+                # unreduced predictions
+                pert_correct = pert_pred.eq(labels.view_as(pert_pred))
+
+                batch_correct_ls.append(pert_correct)
+                correct += pert_correct.sum().item()
+                total += imgs.size(0)
+
+        batch_correct = torch.sum(torch.hstack(batch_correct_ls), dim=1)
+        correct_indiv.append(batch_correct)
+
+    aug_acc = 100. * correct / total
+    aug_indiv_accs = 100. * torch.hstack(correct_indiv) / n_samples
+
+    beta_quant_indiv_accs = torch.where(
+        aug_indiv_accs > (1 - beta) * 100.,
+        100. * torch.ones_like(aug_indiv_accs),
+        torch.zeros_like(aug_indiv_accs))
+    beta_quant_acc = beta_quant_indiv_accs.mean().item()
+
+    return aug_acc, aug_indiv_accs, beta_quant_indiv_accs, beta_quant_acc
+
+
 class Tee:
     def __init__(self, fname, mode="a"):
         self.stdout = sys.stdout
