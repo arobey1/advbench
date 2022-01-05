@@ -22,6 +22,7 @@ def main(args, hparams, test_hparams):
     algorithm = vars(algorithms)[args.algorithm](
         dataset.INPUT_SHAPE, 
         dataset.NUM_CLASSES,
+        args.dataset,
         hparams,
         device,
         len(train_ldr.dataset)).to(device)

@@ -27,13 +27,13 @@ ALGORITHMS = [
 ]
 
 class Algorithm(nn.Module):
-    def __init__(self, input_shape, num_classes, hparams, device):
+    def __init__(self, input_shape, num_classes, dataset, hparams, device):
         super(Algorithm, self).__init__()
         self.hparams = hparams
         self.classifier = networks.Classifier(
             input_shape, num_classes, hparams)
         self.optimizer = optimizers.Optimizer(
-            self.classifier, hparams)
+            self.classifier, dataset, hparams)
         self.device = device
         
         self.meters = OrderedDict()
@@ -60,8 +60,8 @@ class Algorithm(nn.Module):
         return self.meters_df
 
 class ERM(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device, n_data):
-        super(ERM, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(ERM, self).__init__(input_shape, num_classes, dataset, hparams, device)
 
     def step(self, imgs, labels, batch_idx=None):
         self.optimizer.zero_grad()
@@ -72,8 +72,8 @@ class ERM(Algorithm):
         self.meters['loss'].update(loss.item(), n=imgs.size(0))
 
 class PGD(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device, n_data):
-        super(PGD, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(PGD, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
 
     def step(self, imgs, labels, batch_idx=None):
@@ -87,8 +87,8 @@ class PGD(Algorithm):
         self.meters['loss'].update(loss.item(), n=imgs.size(0))
 
 class FuncNorm(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(FuncNorm, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(FuncNorm, self).__init__(input_shape, num_classes, dataset, hparams, device)
 
     def step(self, imgs, labels):
 
@@ -178,8 +178,8 @@ class FuncNorm(Algorithm):
         return deltas.detach()
 
 class FGSM(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(FGSM, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(FGSM, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.attack = attacks.FGSM_Linf(self.classifier, self.hparams, device)
 
     def step(self, imgs, labels):
@@ -193,8 +193,8 @@ class FGSM(Algorithm):
         self.meters['loss'].update(loss.item(), n=imgs.size(0))
 
 class TRADES(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(TRADES, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(TRADES, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')  # TODO(AR): let's write a method to do the log-softmax part
         self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device)
         
@@ -220,8 +220,8 @@ class TRADES(Algorithm):
         return {'loss': total_loss.item()}
 
 class LogitPairingBase(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(LogitPairingBase, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(LogitPairingBase, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
         self.meters['logit loss'] = meters.AverageMeter()
 
@@ -230,8 +230,8 @@ class LogitPairingBase(Algorithm):
         return torch.norm(logit_diff, dim=1).mean()
 
 class ALP(LogitPairingBase):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(ALP, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(ALP, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
         self.meters['robust loss'] = meters.AverageMeter()
 
@@ -249,8 +249,8 @@ class ALP(LogitPairingBase):
         self.meters['logit loss'].update(logit_pairing_loss.item(), n=imgs.size(0))
 
 class CLP(LogitPairingBase):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(CLP, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(CLP, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
 
         self.meters['clean loss'] = meters.AverageMeter()
@@ -269,8 +269,8 @@ class CLP(LogitPairingBase):
         self.meters['logit loss'].update(logit_pairing_loss.item(), n=imgs.size(0))
 
 class MART(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(MART, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(MART, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.kl_loss_fn = nn.KLDivLoss(reduction='none')
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
 
@@ -304,8 +304,8 @@ class MMA(Algorithm):
     pass
 
 class Gaussian_DALE(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(Gaussian_DALE, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(Gaussian_DALE, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['robust loss'] = meters.AverageMeter()
@@ -324,8 +324,8 @@ class Gaussian_DALE(Algorithm):
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
 
 class Laplacian_DALE(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(Laplacian_DALE, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(Laplacian_DALE, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.attack = attacks.LMC_Laplacian_Linf(self.classifier, self.hparams, device)
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['robust loss'] = meters.AverageMeter()
@@ -344,16 +344,16 @@ class Laplacian_DALE(Algorithm):
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
 
 class PrimalDualBase(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(PrimalDualBase, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(PrimalDualBase, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.dual_params = {'dual_var': torch.tensor(1.0).to(self.device)}
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['robust loss'] = meters.AverageMeter()
         self.meters['dual variable'] = meters.AverageMeter()
 
 class Gaussian_DALE_PD(PrimalDualBase):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(Gaussian_DALE_PD, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(Gaussian_DALE_PD, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
             parameters=self.dual_params,
@@ -375,29 +375,29 @@ class Gaussian_DALE_PD(PrimalDualBase):
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
 
-class CVaR_SGD_Autograd(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device, n_data):
-        super(CVaR_SGD_Autograd, self).__init__(input_shape, num_classes, hparams, device)
-        self.cvar_ts = torch.ones(size=(n_data,)).to(self.device)
-        self.meters['avg t'] = meters.AverageMeter()
-        # self.meters['cvar'] = meters.AverageMeter()
+# class CVaR_SGD_Autograd(Algorithm):
+#     def __init__(self, input_shape, num_classes, hparams, device, n_data):
+#         super(CVaR_SGD_Autograd, self).__init__(input_shape, num_classes, hparams, device)
+#         self.cvar_ts = torch.ones(size=(n_data,)).to(self.device)
+#         self.meters['avg t'] = meters.AverageMeter()
+#         # self.meters['cvar'] = meters.AverageMeter()
 
-    @staticmethod
-    def img_clamp(imgs):
-        return torch.clamp(imgs, 0.0, 1.0)
+#     @staticmethod
+#     def img_clamp(imgs):
+#         return torch.clamp(imgs, 0.0, 1.0)
 
-    def step(self, imgs, labels, batch_idx):
+#     def step(self, imgs, labels, batch_idx):
 
-        eta_t = self.hparams['cvar_sgd_t_step_size']
-        beta = self.hparams['cvar_sgd_beta']
-        eps = self.hparams['epsilon']
-        start_idx = batch_idx * self.hparams['batch_size']
-        end_idx = (batch_idx + 1) * self.hparams['batch_size']
+#         eta_t = self.hparams['cvar_sgd_t_step_size']
+#         beta = self.hparams['cvar_sgd_beta']
+#         eps = self.hparams['epsilon']
+#         start_idx = batch_idx * self.hparams['batch_size']
+#         end_idx = (batch_idx + 1) * self.hparams['batch_size']
 
 
 class CVaR_SGD(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device, n_data):
-        super(CVaR_SGD, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(CVaR_SGD, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.cvar_ts = torch.ones(size=(n_data,)).to(self.device)
         self.meters['avg t'] = meters.AverageMeter()
         self.meters['plain loss'] = meters.AverageMeter()
@@ -448,8 +448,8 @@ class CVaR_SGD(Algorithm):
         self.meters['plain loss'].update(plain_loss.item() / M, n=imgs.size(0))
 
 class Gaussian_DALE_PD_Reverse(PrimalDualBase):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(Gaussian_DALE_PD_Reverse, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(Gaussian_DALE_PD_Reverse, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
             parameters=self.dual_params,
@@ -472,8 +472,8 @@ class Gaussian_DALE_PD_Reverse(PrimalDualBase):
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
 
 class KL_DALE_PD(PrimalDualBase):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(KL_DALE_PD, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(KL_DALE_PD, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device)
         self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
