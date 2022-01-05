@@ -14,7 +14,8 @@ def to_loaders(all_datasets, hparams):
             dataset=dataset, 
             batch_size=batch_size,
             num_workers=all_datasets.N_WORKERS,
-            shuffle=(split == 'train'))
+            shuffle=False)
+            # shuffle=(split == 'train'))
     
     return [_to_loader(s, d) for (s, d) in all_datasets.splits.items()]
 
@@ -37,7 +38,7 @@ class CIFAR10(AdvRobDataset):
  
     INPUT_SHAPE = (3, 32, 32)
     NUM_CLASSES = 10
-    N_EPOCHS = 200
+    N_EPOCHS = 115
     CHECKPOINT_FREQ = 10
     LOG_INTERVAL = 100
     HAS_LR_SCHEDULE = True
@@ -67,11 +68,11 @@ class CIFAR10(AdvRobDataset):
     @staticmethod
     def adjust_lr(optimizer, epoch, hparams):
         lr = hparams['learning_rate']
-        if epoch >= 150:
+        if epoch >= 55:    # 150
             lr = hparams['learning_rate'] * 0.1
-        if epoch >= 175:
+        if epoch >= 75:    # 175
             lr = hparams['learning_rate'] * 0.01
-        if epoch >= 190:
+        if epoch >= 90:    # 190
             lr = hparams['learning_rate'] * 0.001
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
