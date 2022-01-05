@@ -58,7 +58,7 @@ def adv_accuracy(algorithm, loader, device, attack):
 
     return 100. * correct / total
 
-def augmented_accuracy(algorithm, loader, device, beta, eps, n_samples):
+def augmented_accuracy(algorithm, loader, device, betas, eps, n_samples):
 
     def img_clamp(imgs):
         return torch.clamp(imgs, 0.0, 1.0)
@@ -92,13 +92,23 @@ def augmented_accuracy(algorithm, loader, device, beta, eps, n_samples):
     aug_acc = 100. * correct / total
     aug_indiv_accs = 100. * torch.hstack(correct_indiv) / n_samples
 
-    beta_quant_indiv_accs = torch.where(
-        aug_indiv_accs > (1 - beta) * 100.,
-        100. * torch.ones_like(aug_indiv_accs),
-        torch.zeros_like(aug_indiv_accs))
-    beta_quant_acc = beta_quant_indiv_accs.mean().item()
+    def calc_beta_quant_acc(beta):
+        """Calculate the quantile accuracy for the augmented samples."""
+        beta_quant_indiv_accs = torch.where(
+            aug_indiv_accs > (1 - beta) * 100.,
+            100. * torch.ones_like(aug_indiv_accs),
+            torch.zeros_like(aug_indiv_accs))
+        beta_quant_acc = beta_quant_indiv_accs.mean().item()
+        return beta_quant_indiv_accs, beta_quant_acc
 
-    return aug_acc, aug_indiv_accs, beta_quant_indiv_accs, beta_quant_acc
+    # loop over betas, find corresponding quantile accuracies
+    beta_quant_indiv_accs, beta_quant_accs = {}, {}
+    for beta in betas:
+        quant_indiv_acc, quant_acc = calc_beta_quant_acc(beta)
+        beta_quant_indiv_accs[beta] = quant_indiv_acc
+        beta_quant_accs[beta] = quant_acc
+
+    return aug_acc, aug_indiv_accs, beta_quant_indiv_accs, beta_quant_accs
 
 
 class Tee:

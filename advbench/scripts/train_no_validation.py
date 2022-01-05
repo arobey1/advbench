@@ -67,11 +67,11 @@ def main(args, hparams, test_hparams):
         add_results_row([epoch, test_clean_acc, 'ERM', 'Test'])
 
         # save quantile accuracies on test sets
-        beta, eps, n_samp = hparams['cvar_sgd_beta'], hparams['epsilon'], 100
-        test_aug_acc, test_aug_indiv_accs, test_quant_indiv_accs, test_quant_acc = misc.augmented_accuracy(
-            algorithm, test_ldr, device, beta, eps, n_samp)
+        test_aug_acc, test_aug_indiv_accs, test_quant_indiv_accs, test_quant_accs = misc.augmented_accuracy(
+            algorithm, test_ldr, device, test_hparams['test_betas'], hparams['epsilon'], test_hparams['aug_n_samples'])
         add_results_row([epoch, test_aug_acc, 'Augmented-ERM', 'Test'])
-        add_results_row([epoch, test_quant_acc, f'{beta}-Quantile', 'Test'])
+        for beta in test_hparams['test_betas']:
+            add_results_row([epoch, test_quant_accs[beta], f'{beta}-Quantile', 'Test'])
 
         # save adversarial accuracies on test sets
         test_adv_accs = []
@@ -92,12 +92,13 @@ def main(args, hparams, test_hparams):
         print(f'Path: {args.output_dir}')
         for name, meter in algorithm.meters.items():
             print(f'Avg. train {name}: {meter.avg:.3f}\t', end='')
-        print(f'\nClean val. accuracy: {test_clean_acc:.3f}\t', end='')
-        print(f'Augmented val. accuracy: {test_aug_acc:.3f}\t', end='')
-        print(f'{beta}-Quantile val. accuracy: {test_quant_acc:.3f}\t', end='')
+        print('\nAccuracies:')
+        print(f'\tClean: {test_clean_acc:.3f}')
+        print(f'\tAugmented: {test_aug_acc:.3f}')
         for attack_name, acc in zip(test_attacks.keys(), test_adv_accs):
-            print(f'{attack_name} val. accuracy: {acc:.3f}\t', end='')
-        print('\n')
+            print(f'\t{attack_name}: {acc:.3f}')
+        for beta in test_hparams['test_betas']:
+            print(f'\t{beta}-Quantile: {test_quant_accs[beta]:.3f}')
 
         # save results dataframe to file
         results_df.to_pickle(os.path.join(args.output_dir, 'results.pkl'))

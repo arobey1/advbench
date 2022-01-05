@@ -116,6 +116,9 @@ def test_hparams(algorithm: str, dataset: str):
         assert(name not in hparams)
         hparams[name] = default_val
 
+    _hparam('test_betas', [0.1, 0.05, 0.01, 0.005, 0.001])
+    _hparam('aug_n_samples', 100)
+
     if dataset == 'MNIST':
         _hparam('epsilon', 0.3)
     elif dataset == 'CIFAR10':
