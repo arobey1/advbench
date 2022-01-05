@@ -5,15 +5,15 @@ import torch
 
 def Optimizer(classifier, hparams):
 
-    # return optim.Adadelta(
-    #     classifier.parameters(),
-    #     lr=1.0)
-
-    return optim.SGD(
+    return optim.Adadelta(
         classifier.parameters(),
-        lr=hparams['learning_rate'],
-        momentum=hparams['sgd_momentum'],
-        weight_decay=hparams['weight_decay'])
+        lr=1.0)
+
+    # return optim.SGD(
+    #     classifier.parameters(),
+    #     lr=hparams['learning_rate'],
+    #     momentum=hparams['sgd_momentum'],
+    #     weight_decay=hparams['weight_decay'])
 
 class PrimalDualOptimizer:
     def __init__(self, parameters, margin, eta):
