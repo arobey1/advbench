@@ -58,10 +58,15 @@ def adv_accuracy(algorithm, loader, device, attack):
 
     return 100. * correct / total
 
-def augmented_accuracy(algorithm, loader, device, betas, eps, n_samples):
+@torch.no_grad()
+def augmented_accuracy(algorithm, loader, device, test_hparams):
 
     def img_clamp(imgs):
         return torch.clamp(imgs, 0.0, 1.0)
+
+    def sample_deltas(imgs):
+        eps = test_hparams['epsilon']
+        return 2 * eps * torch.rand_like(imgs) - eps
 
     correct, total = 0, 0
     correct_indiv = []
@@ -71,26 +76,24 @@ def augmented_accuracy(algorithm, loader, device, betas, eps, n_samples):
         imgs, labels = imgs.to(device), labels.to(device)
 
         batch_correct_ls = []
-        for _ in range(n_samples):
-            with torch.no_grad():
+        for _ in range(test_hparams['aug_n_samples']):
 
-                # sample deltas and pass perturbed images through model
-                samp_deltas = 2 * eps * torch.rand_like(imgs) - eps
-                output = algorithm.predict(img_clamp(imgs + samp_deltas))
-                pert_pred = output.argmax(dim=1, keepdim=True)
+            # sample deltas and pass perturbed images through model
+            output = algorithm.predict(img_clamp(imgs + sample_deltas(imgs)))
+            pert_pred = output.argmax(dim=1, keepdim=True)
 
-                # unreduced predictions
-                pert_correct = pert_pred.eq(labels.view_as(pert_pred))
+            # unreduced predictions
+            pert_correct = pert_pred.eq(labels.view_as(pert_pred))
 
-                batch_correct_ls.append(pert_correct)
-                correct += pert_correct.sum().item()
-                total += imgs.size(0)
+            batch_correct_ls.append(pert_correct)
+            correct += pert_correct.sum().item()
+            total += imgs.size(0)
 
         batch_correct = torch.sum(torch.hstack(batch_correct_ls), dim=1)
         correct_indiv.append(batch_correct)
 
     aug_acc = 100. * correct / total
-    aug_indiv_accs = 100. * torch.hstack(correct_indiv) / n_samples
+    aug_indiv_accs = 100. * torch.hstack(correct_indiv) / test_hparams['aug_n_samples']
 
     def calc_beta_quant_acc(beta):
         """Calculate the quantile accuracy for the augmented samples."""
@@ -103,7 +106,7 @@ def augmented_accuracy(algorithm, loader, device, betas, eps, n_samples):
 
     # loop over betas, find corresponding quantile accuracies
     beta_quant_indiv_accs, beta_quant_accs = {}, {}
-    for beta in betas:
+    for beta in test_hparams['test_betas']:
         quant_indiv_acc, quant_acc = calc_beta_quant_acc(beta)
         beta_quant_indiv_accs[beta] = quant_indiv_acc
         beta_quant_accs[beta] = quant_acc

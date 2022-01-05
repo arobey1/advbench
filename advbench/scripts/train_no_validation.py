@@ -68,7 +68,7 @@ def main(args, hparams, test_hparams):
 
         # save quantile accuracies on test sets
         test_aug_acc, test_aug_indiv_accs, test_quant_indiv_accs, test_quant_accs = misc.augmented_accuracy(
-            algorithm, test_ldr, device, test_hparams['test_betas'], hparams['epsilon'], test_hparams['aug_n_samples'])
+            algorithm, test_ldr, device, test_hparams)
         add_results_row([epoch, test_aug_acc, 'Augmented-ERM', 'Test'])
         for beta in test_hparams['test_betas']:
             add_results_row([epoch, test_quant_accs[beta], f'{beta}-Quantile', 'Test'])
