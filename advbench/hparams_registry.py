@@ -99,10 +99,10 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     _hparam('func_norm_n_steps', 2, lambda r: 2)
 
     # CVaR SGD
-    _hparam('cvar_sgd_t_step_size', 0.001, lambda r: 0.001)
+    _hparam('cvar_sgd_t_step_size', 0.5, lambda r: 0.001)
     _hparam('cvar_sgd_beta', 0.05, lambda r: 0.1)
     _hparam('cvar_sgd_M', 10, lambda r: 10)
-    _hparam('cvar_sgd_n_steps', 20, lambda r: 10)
+    _hparam('cvar_sgd_n_steps', 10, lambda r: 10)
 
     return hparams
 
@@ -139,5 +139,11 @@ def test_hparams(algorithm: str, dataset: str):
     elif dataset == 'CIFAR10':
         _hparam('trades_n_steps', 20)
         _hparam('trades_step_size', 2/255.)
+
+    ##### CVaR SGD #####
+    _hparam('cvar_sgd_t_step_size', 0.5)
+    _hparam('cvar_sgd_beta', 0.05)
+    _hparam('cvar_sgd_M', 10)
+    _hparam('cvar_sgd_n_steps', 10)
 
     return hparams
