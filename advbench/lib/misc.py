@@ -4,6 +4,9 @@ import sys
 from functools import wraps
 from time import time
 import pandas as pd
+import torch.nn.functional as F
+
+from advbench.lib import meters
 
 def timing(f):
     @wraps(f)
@@ -58,18 +61,84 @@ def adv_accuracy(algorithm, loader, device, attack):
 
     return 100. * correct / total
 
+def sample_deltas(imgs, eps):
+    return 2 * eps * torch.rand_like(imgs) - eps
+
+def img_clamp(imgs):
+    return torch.clamp(imgs, 0.0, 1.0)
+
+@torch.no_grad()
+def cvar_loss(algorithm, loader, device, test_hparams):
+
+    beta, M = test_hparams['cvar_sgd_beta'], test_hparams['cvar_sgd_M']
+    eps = test_hparams['epsilon']
+    cvar_meter = meters.AverageMeter()
+
+    algorithm.eval()
+    for batch_idx, (imgs, labels) in enumerate(loader):
+        imgs, labels = imgs.to(device), labels.to(device)
+
+        ts = torch.zeros(size=(imgs.size(0),)).to(device)
+
+        for _ in range(test_hparams['cvar_sgd_n_steps']):
+
+            cvar_loss, indicator_sum = 0, 0
+            for _ in range(test_hparams['cvar_sgd_M']):
+                pert_imgs = img_clamp(imgs + sample_deltas(imgs, eps))
+                curr_loss = F.cross_entropy(algorithm.predict(pert_imgs), labels, reduction='none')
+                indicator_sum += torch.where(curr_loss > ts, torch.ones_like(ts), torch.zeros_like(ts))
+                cvar_loss += F.relu(curr_loss - ts)
+
+            indicator_avg = indicator_sum / float(M)
+            cvar_loss = (ts + cvar_loss / (M * beta)).mean()
+
+            # gradient update on ts
+            grad_ts = (1 - (1 / beta) * indicator_avg) / float(imgs.size(0))
+            ts = ts - test_hparams['cvar_sgd_t_step_size'] * grad_ts
+
+        cvar_meter.update(cvar_loss.item(), n=imgs.size(0))
+
+    algorithm.train()
+
+    return cvar_meter.avg
+
+def cvar_grad_loss(algorithm, loader, device, test_hparams):
+
+    beta, M = test_hparams['cvar_sgd_beta'], test_hparams['cvar_sgd_M']
+    eps = test_hparams['epsilon']
+    cvar_meter = meters.AverageMeter()
+    algorithm.eval()
+
+    for batch_idx, (imgs, labels) in enumerate(loader):
+        imgs, labels = imgs.to(device), labels.to(device)
+        ts = torch.zeros(size=(imgs.size(0),)).to(device)
+
+        for _ in range(test_hparams['cvar_sgd_n_steps']):
+            ts.requires_grad = True
+            cvar_loss = 0
+            for _ in range(M):
+                pert_imgs = img_clamp(imgs + sample_deltas(imgs, eps))
+                curr_loss = F.cross_entropy(algorithm.predict(pert_imgs), labels, reduction='none')
+                cvar_loss += F.relu(curr_loss - ts)
+
+            cvar_loss = (ts + cvar_loss / (float(M) * beta)).mean()
+            grad_ts = torch.autograd.grad(cvar_loss, [ts])[0].detach()
+            ts = ts - test_hparams['cvar_sgd_t_step_size'] * grad_ts
+            ts = ts.detach()
+
+        cvar_meter.update(cvar_loss.item(), n=imgs.size(0))
+
+    algorithm.train()
+
+    return cvar_meter.avg
+
+
 @torch.no_grad()
 def augmented_accuracy(algorithm, loader, device, test_hparams):
 
-    def img_clamp(imgs):
-        return torch.clamp(imgs, 0.0, 1.0)
-
-    def sample_deltas(imgs):
-        eps = test_hparams['epsilon']
-        return 2 * eps * torch.rand_like(imgs) - eps
-
     correct, total = 0, 0
     correct_indiv = []
+    eps = test_hparams['epsilon']
 
     algorithm.eval()
     for imgs, labels in loader:
@@ -79,7 +148,7 @@ def augmented_accuracy(algorithm, loader, device, test_hparams):
         for _ in range(test_hparams['aug_n_samples']):
 
             # sample deltas and pass perturbed images through model
-            output = algorithm.predict(img_clamp(imgs + sample_deltas(imgs)))
+            output = algorithm.predict(img_clamp(imgs + sample_deltas(imgs, eps)))
             pert_pred = output.argmax(dim=1, keepdim=True)
 
             # unreduced predictions

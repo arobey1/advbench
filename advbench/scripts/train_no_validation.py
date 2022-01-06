@@ -15,6 +15,7 @@ from advbench.lib import misc, meters
 def main(args, hparams, test_hparams):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    torch.manual_seed(0)
 
     dataset = vars(datasets)[args.dataset](args.data_dir)
     train_ldr, val_ldr, test_ldr = datasets.to_loaders(dataset, hparams)
@@ -37,6 +38,12 @@ def main(args, hparams, test_hparams):
     def add_results_row(data):
         defaults = [args.algorithm, args.dataset, args.trial_seed, args.output_dir]
         results_df.loc[len(results_df)] = data + defaults
+
+    columns = ['Epoch', 'Loss', 'Eval-Method', 'Split', 'Train-Alg', 'Dataset', 'Trial-Seed', 'Output-Dir']
+    loss_df = pd.DataFrame(columns=columns)
+    def add_loss_row(data):
+        defaults = [args.algorithm, args.dataset, args.trial_seed, args.output_dir]
+        loss_df.loc[len(loss_df)] = data + defaults
 
     total_time = 0
     for epoch in range(0, dataset.N_EPOCHS):
@@ -73,6 +80,10 @@ def main(args, hparams, test_hparams):
         for beta in test_hparams['test_betas']:
             add_results_row([epoch, test_quant_accs[beta], f'{beta}-Quantile', 'Test'])
 
+        # save cvar loss on test sets
+        test_cvar_loss = misc.cvar_grad_loss(algorithm, test_ldr, device, test_hparams)
+        add_loss_row([epoch, test_cvar_loss, 'CVaR', 'Test'])
+
         # save adversarial accuracies on test sets
         test_adv_accs = []
         for attack_name, attack in test_attacks.items():
@@ -93,7 +104,9 @@ def main(args, hparams, test_hparams):
         print('Avg. training losses:')
         for name, meter in algorithm.meters.items():
             print(f'\t{name}: {meter.avg:.3f}', end='')
-        print('\nAccuracies:')
+        print('\nAvg. test losses:')
+        print(f'\tCVaR: {test_cvar_loss:.3f}')
+        print('Accuracies:')
         print(f'\tClean: {test_clean_acc:.3f}')
         print(f'\tAugmented: {test_aug_acc:.3f}')
         for attack_name, acc in zip(test_attacks.keys(), test_adv_accs):
