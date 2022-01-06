@@ -23,7 +23,9 @@ ALGORITHMS = [
     'Gaussian_DALE_PD_Reverse',
     'KL_DALE_PD',
     'FuncNorm',
-    'CVaR_SGD'
+    'CVaR_SGD',
+    'CVaR_SGD_Autograd',
+    'ERM_DataAug'
 ]
 
 class Algorithm(nn.Module):
@@ -46,6 +48,10 @@ class Algorithm(nn.Module):
     def predict(self, imgs):
         return self.classifier(imgs)
 
+    @staticmethod
+    def img_clamp(imgs):
+        return torch.clamp(imgs, 0.0, 1.0)
+
     def reset_meters(self):
         for meter in self.meters.values():
             meter.reset()
@@ -66,6 +72,26 @@ class ERM(Algorithm):
     def step(self, imgs, labels, batch_idx=None):
         self.optimizer.zero_grad()
         loss = F.cross_entropy(self.predict(imgs), labels)
+        loss.backward()
+        self.optimizer.step()
+        
+        self.meters['loss'].update(loss.item(), n=imgs.size(0))
+
+class ERM_DataAug(Algorithm):
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(ERM_DataAug, self).__init__(input_shape, num_classes, dataset, hparams, device)
+
+    def sample_deltas(self, imgs):
+        eps = self.hparams['epsilon']
+        return 2 * eps * torch.rand_like(imgs) - eps
+
+    def step(self, imgs, labels, batch_idx=None):
+        self.optimizer.zero_grad()
+        loss = 0
+        for _ in range(self.hparams['cvar_sgd_M']):
+            loss += F.cross_entropy(self.predict(imgs), labels)
+
+        loss = loss / float(self.hparams['cvar_sgd_M'])
         loss.backward()
         self.optimizer.step()
         
@@ -375,36 +401,11 @@ class Gaussian_DALE_PD(PrimalDualBase):
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
 
-# class CVaR_SGD_Autograd(Algorithm):
-#     def __init__(self, input_shape, num_classes, hparams, device, n_data):
-#         super(CVaR_SGD_Autograd, self).__init__(input_shape, num_classes, hparams, device)
-#         self.cvar_ts = torch.ones(size=(n_data,)).to(self.device)
-#         self.meters['avg t'] = meters.AverageMeter()
-#         # self.meters['cvar'] = meters.AverageMeter()
-
-#     @staticmethod
-#     def img_clamp(imgs):
-#         return torch.clamp(imgs, 0.0, 1.0)
-
-#     def step(self, imgs, labels, batch_idx):
-
-#         eta_t = self.hparams['cvar_sgd_t_step_size']
-#         beta = self.hparams['cvar_sgd_beta']
-#         eps = self.hparams['epsilon']
-#         start_idx = batch_idx * self.hparams['batch_size']
-#         end_idx = (batch_idx + 1) * self.hparams['batch_size']
-
-
-class CVaR_SGD(Algorithm):
+class CVaR_SGD_Autograd(Algorithm):
     def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(CVaR_SGD, self).__init__(input_shape, num_classes, dataset, hparams, device)
-        self.cvar_ts = torch.ones(size=(n_data,)).to(self.device)
+        super(CVaR_SGD_Autograd, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.meters['avg t'] = meters.AverageMeter()
         self.meters['plain loss'] = meters.AverageMeter()
-
-    @staticmethod
-    def img_clamp(imgs):
-        return torch.clamp(imgs, 0.0, 1.0)
 
     def sample_deltas(self, imgs):
         eps = self.hparams['epsilon']
@@ -412,14 +413,55 @@ class CVaR_SGD(Algorithm):
 
     def step(self, imgs, labels, batch_idx):
 
-        eta_t = self.hparams['cvar_sgd_t_step_size']
-        beta = self.hparams['cvar_sgd_beta']
-        M = float(self.hparams['cvar_sgd_M'])
-        start_idx = batch_idx * self.hparams['batch_size']
-        end_idx = (batch_idx + 1) * self.hparams['batch_size']
+        beta, M = self.hparams['cvar_sgd_beta'], self.hparams['cvar_sgd_M']
+        ts = torch.ones(size=(imgs.size(0),)).to(self.device)
 
-        # select subset of ts
-        ts = self.cvar_ts[start_idx:end_idx]
+        self.optimizer.zero_grad()
+        for _ in range(self.hparams['cvar_sgd_n_steps']):
+
+            ts.requires_grad = True
+            cvar_loss = 0
+            for _ in range(M):
+                pert_imgs = self.img_clamp(imgs + self.sample_deltas(imgs))
+                curr_loss = F.cross_entropy(self.predict(pert_imgs), labels, reduction='none')
+                cvar_loss += F.relu(curr_loss - ts)
+    
+            cvar_loss = (ts + cvar_loss / (float(M) * beta)).mean()
+            grad_ts = torch.autograd.grad(cvar_loss, [ts])[0].detach()
+            ts = ts - self.hparams['cvar_sgd_t_step_size'] * grad_ts
+            ts = ts.detach()
+
+        plain_loss, cvar_loss = 0, 0
+        for _ in range(M):
+            pert_imgs = self.img_clamp(imgs + self.sample_deltas(imgs))
+            curr_loss = F.cross_entropy(self.predict(pert_imgs), labels, reduction='none')
+            plain_loss += curr_loss.mean()
+            cvar_loss += F.relu(curr_loss - ts)
+
+        cvar_loss = (cvar_loss / (beta * float(M))).mean()   
+
+        cvar_loss.backward()
+        self.optimizer.step()
+
+        self.meters['loss'].update(cvar_loss.item(), n=imgs.size(0))
+        self.meters['avg t'].update(ts.mean().item(), n=imgs.size(0))
+        self.meters['plain loss'].update(plain_loss.item() / M, n=imgs.size(0))
+
+class CVaR_SGD(Algorithm):
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(CVaR_SGD, self).__init__(input_shape, num_classes, dataset, hparams, device)
+        self.meters['avg t'] = meters.AverageMeter()
+        self.meters['plain loss'] = meters.AverageMeter()
+
+    def sample_deltas(self, imgs):
+        eps = self.hparams['epsilon']
+        return 2 * eps * torch.rand_like(imgs) - eps
+
+    def step(self, imgs, labels, batch_idx):
+
+        beta = self.hparams['cvar_sgd_beta']
+        M = self.hparams['cvar_sgd_M']
+        ts = torch.ones(size=(imgs.size(0),)).to(self.device)
 
         self.optimizer.zero_grad()
         for _ in range(self.hparams['cvar_sgd_n_steps']):
@@ -432,19 +474,19 @@ class CVaR_SGD(Algorithm):
 
                 plain_loss += curr_loss.mean()
                 cvar_loss += F.relu(curr_loss - ts)                
-    
-            indicator_avg = indicator_sum / M
-            cvar_loss = (ts + cvar_loss / (M * beta)).mean()
-            
-            # gradient update on ts
-            self.cvar_ts[start_idx:end_idx] = ts - eta_t * (1 - (1 / beta) * indicator_avg)
 
-        # update on neural network
+            indicator_avg = indicator_sum / float(M)
+            cvar_loss = (ts + cvar_loss / (float(M) * beta)).mean()
+
+            # gradient update on ts
+            grad_ts = (1 - (1 / beta) * indicator_avg) / float(imgs.size(0))
+            ts = ts - self.hparams['cvar_sgd_t_step_size'] * grad_ts
+
         cvar_loss.backward()
         self.optimizer.step()
 
         self.meters['loss'].update(cvar_loss.item(), n=imgs.size(0))
-        self.meters['avg t'].update(self.cvar_ts[start_idx:end_idx].mean().item(), n=imgs.size(0))
+        self.meters['avg t'].update(ts.mean().item(), n=imgs.size(0))
         self.meters['plain loss'].update(plain_loss.item() / M, n=imgs.size(0))
 
 class Gaussian_DALE_PD_Reverse(PrimalDualBase):
