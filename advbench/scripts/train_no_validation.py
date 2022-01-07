@@ -116,6 +116,7 @@ def main(args, hparams, test_hparams):
 
         # save results dataframe to file
         results_df.to_pickle(os.path.join(args.output_dir, 'results.pkl'))
+        loss_df.to_pickle(os.path.join(args.output_dir, 'losses.pkl'))
 
         # reset all meters
         meters_df = algorithm.meters_to_df(epoch)
