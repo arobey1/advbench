@@ -3,7 +3,7 @@ import tqdm
 import pandas as pd
 
 def load_records(path, results_fname='results', depth=1):
-    assert results_fname in ['results', 'meters']
+    assert results_fname in ['results', 'meters', 'losses']
 
     records = []
 
