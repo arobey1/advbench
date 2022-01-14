@@ -81,7 +81,7 @@ class ERM_DataAug(Algorithm):
     def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
         super(ERM_DataAug, self).__init__(input_shape, num_classes, dataset, hparams, device)
 
-    def sample_deltas(self, imgs):
+    def sample_deltas(self, imgs, batch_idx=None):
         eps = self.hparams['epsilon']
         return 2 * eps * torch.rand_like(imgs) - eps
 
@@ -116,7 +116,7 @@ class FuncNorm(Algorithm):
     def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
         super(FuncNorm, self).__init__(input_shape, num_classes, dataset, hparams, device)
 
-    def step(self, imgs, labels):
+    def step(self, imgs, labels, batch_idx=None):
 
         self.optimizer.zero_grad()
         loss = self.compute_norm_estimate(imgs, labels)
@@ -208,7 +208,7 @@ class FGSM(Algorithm):
         super(FGSM, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.attack = attacks.FGSM_Linf(self.classifier, self.hparams, device)
 
-    def step(self, imgs, labels):
+    def step(self, imgs, labels, batch_idx=None):
 
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
@@ -227,7 +227,7 @@ class TRADES(Algorithm):
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['invariance loss'] = meters.AverageMeter()
 
-    def step(self, imgs, labels):
+    def step(self, imgs, labels, batch_idx=None):
 
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
