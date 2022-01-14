@@ -539,6 +539,7 @@ class CVaR_SGD_PD(Algorithm):
         self.meters['loss'].update(cvar_loss.item(), n=imgs.size(0))
         self.meters['avg t'].update(ts.mean().item(), n=imgs.size(0))
         self.meters['plain loss'].update(plain_loss.item() / M, n=imgs.size(0))
+        self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
 
 class Gaussian_DALE_PD_Reverse(PrimalDualBase):
     def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
