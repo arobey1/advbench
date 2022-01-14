@@ -25,6 +25,7 @@ ALGORITHMS = [
     'FuncNorm',
     'CVaR_SGD',
     'CVaR_SGD_Autograd',
+    'CVaR_SGD_PD',
     'ERM_DataAug'
 ]
 
@@ -484,6 +485,56 @@ class CVaR_SGD(Algorithm):
 
         cvar_loss.backward()
         self.optimizer.step()
+
+        self.meters['loss'].update(cvar_loss.item(), n=imgs.size(0))
+        self.meters['avg t'].update(ts.mean().item(), n=imgs.size(0))
+        self.meters['plain loss'].update(plain_loss.item() / M, n=imgs.size(0))
+
+class CVaR_SGD_PD(Algorithm):
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(CVaR_SGD_PD, self).__init__(input_shape, num_classes, dataset, hparams, device)
+        self.dual_params = {'dual_var': torch.tensor(1.0).to(self.device)}
+        self.meters['avg t'] = meters.AverageMeter()
+        self.meters['plain loss'] = meters.AverageMeter()
+        self.meters['dual variable'] = meters.AverageMeter()
+        self.pd_optimizer = optimizers.PrimalDualOptimizer(
+            parameters=self.dual_params,
+            margin=self.hparams['g_dale_pd_margin'],
+            eta=self.hparams['g_dale_pd_step_size'])
+
+    def sample_deltas(self, imgs):
+        eps = self.hparams['epsilon']
+        return 2 * eps * torch.rand_like(imgs) - eps
+
+    def step(self, imgs, labels, batch_idx):
+
+        beta = self.hparams['cvar_sgd_beta']
+        M = self.hparams['cvar_sgd_M']
+        ts = torch.ones(size=(imgs.size(0),)).to(self.device)
+
+        self.optimizer.zero_grad()
+        for _ in range(self.hparams['cvar_sgd_n_steps']):
+
+            plain_loss, cvar_loss, indicator_sum = 0, 0, 0
+            for _ in range(self.hparams['cvar_sgd_M']):
+                pert_imgs = self.img_clamp(imgs + self.sample_deltas(imgs))
+                curr_loss = F.cross_entropy(self.predict(pert_imgs), labels, reduction='none')
+                indicator_sum += torch.where(curr_loss > ts, torch.ones_like(ts), torch.zeros_like(ts))
+
+                plain_loss += curr_loss.mean()
+                cvar_loss += F.relu(curr_loss - ts)                
+
+            indicator_avg = indicator_sum / float(M)
+            cvar_loss = (ts + cvar_loss / (float(M) * beta)).mean()
+
+            # gradient update on ts
+            grad_ts = (1 - (1 / beta) * indicator_avg) / float(imgs.size(0))
+            ts = ts - self.hparams['cvar_sgd_t_step_size'] * grad_ts
+
+        loss = cvar_loss + self.dual_params['dual_var'] * (plain_loss / float(M))
+        loss.backward()
+        self.optimizer.step()
+        self.pd_optimizer.step(plain_loss.detach() / M)
 
         self.meters['loss'].update(cvar_loss.item(), n=imgs.size(0))
         self.meters['avg t'].update(ts.mean().item(), n=imgs.size(0))
