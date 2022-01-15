@@ -26,7 +26,8 @@ ALGORITHMS = [
     'CVaR_SGD',
     'CVaR_SGD_Autograd',
     'CVaR_SGD_PD',
-    'ERM_DataAug'
+    'ERM_DataAug',
+    'TERM'
 ]
 
 class Algorithm(nn.Module):
@@ -97,6 +98,23 @@ class ERM_DataAug(Algorithm):
         self.optimizer.step()
         
         self.meters['loss'].update(loss.item(), n=imgs.size(0))
+
+class TERM(Algorithm):
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(TERM, self).__init__(input_shape, num_classes, dataset, hparams, device)
+        self.meters['tilted loss'] = meters.AverageMeter()
+        self.t = self.hparams['term_t']
+
+    def step(self, imgs, labels, batch_idx=None):
+        self.optimizer.zero_grad()
+        loss = F.cross_entropy(self.predict(imgs), labels, reduction='none')
+        term_loss = torch.log(torch.exp(self.t * loss).mean() + 1e-6) / self.t
+        print(loss)
+        term_loss.backward()
+        self.optimizer.step()
+        
+        self.meters['loss'].update(loss.mean().item(), n=imgs.size(0))
+        self.meters['tilted loss'].update(term_loss.item(), n=imgs.size(0))
 
 class PGD(Algorithm):
     def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
@@ -247,7 +265,7 @@ class TRADES(Algorithm):
         return {'loss': total_loss.item()}
 
 class LogitPairingBase(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+    def __init__(self, input_shape, num_classes, dataset, hparams, device):
         super(LogitPairingBase, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
         self.meters['logit loss'] = meters.AverageMeter()
@@ -262,7 +280,7 @@ class ALP(LogitPairingBase):
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
         self.meters['robust loss'] = meters.AverageMeter()
 
-    def step(self, imgs, labels):
+    def step(self, imgs, labels, batch_idx=None):
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
         robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
@@ -282,7 +300,7 @@ class CLP(LogitPairingBase):
 
         self.meters['clean loss'] = meters.AverageMeter()
 
-    def step(self, imgs, labels):
+    def step(self, imgs, labels, batch_idx=None):
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(imgs), labels)
@@ -304,7 +322,7 @@ class MART(Algorithm):
         self.meters['robust loss'] = meters.AverageMeter()
         self.meters['invariance loss'] = meters.AverageMeter()
 
-    def step(self, imgs, labels):
+    def step(self, imgs, labels, batch_idx=None):
         
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
