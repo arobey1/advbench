@@ -1,0 +1,14 @@
+{
+  "data_dir": "./advbench/data",
+  "output_dir": "train-output",
+  "dataset": "MNIST",
+  "algorithm": "Gaussian_DALE_PD",
+  "perturbation": "Rotation",
+  "test_attacks": [
+    "PGD_Linf"
+  ],
+  "hparams": null,
+  "hparams_seed": 0,
+  "trial_seed": 0,
+  "seed": 0
+}

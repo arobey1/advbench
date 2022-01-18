@@ -12,6 +12,12 @@ from advbench import attacks
 from advbench import hparams_registry
 from advbench.lib import misc, meters
 
+try:
+    import wandb
+    wandb_log=True
+except ImportError:
+    wandb_log=False
+
 def main(args, hparams, test_hparams):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -23,29 +29,35 @@ def main(args, hparams, test_hparams):
         dataset.INPUT_SHAPE, 
         dataset.NUM_CLASSES,
         hparams,
-        device).to(device)
+        device,
+        perturbation=args.perturbation).to(device)
 
     adjust_lr = None if dataset.HAS_LR_SCHEDULE is False else dataset.adjust_lr
 
     test_attacks = {
-        a: vars(attacks)[a](algorithm.classifier, test_hparams, device) for a in args.test_attacks}
+        a: vars(attacks)[a](algorithm.classifier, test_hparams, device, perturbation=args.perturbation) for a in args.test_attacks}
     
     columns = ['Epoch', 'Accuracy', 'Eval-Method', 'Split', 'Train-Alg', 'Dataset', 'Trial-Seed', 'Output-Dir']
     results_df = pd.DataFrame(columns=columns)
     def add_results_row(data):
         defaults = [args.algorithm, args.dataset, args.trial_seed, args.output_dir]
         results_df.loc[len(results_df)] = data + defaults
-
+    if wandb_log:
+        wandb.init(project="adversarial-constrained")
+        wandb.config.update(args)
+        wandb.config.update(hparams)
     total_time = 0
+    step = 0
     for epoch in range(0, dataset.N_EPOCHS):
 
         if adjust_lr is not None:
             adjust_lr(algorithm.optimizer, epoch, hparams)
-
+        if wandb_log:
+            wandb.log({'lr': hparams['learning_rate'], 'epoch': epoch, 'step':step})
         timer = meters.TimeMeter()
         epoch_start = time.time()
         for batch_idx, (imgs, labels) in enumerate(train_ldr):
-
+            step+=imgs.shape[0]
             timer.batch_start()
             imgs, labels = imgs.to(device), labels.to(device)
             algorithm.step(imgs, labels)
@@ -55,13 +67,22 @@ def main(args, hparams, test_hparams):
                 print(f'[{batch_idx * imgs.size(0)}/{len(train_ldr.dataset)}', end=' ')
                 print(f'({100. * batch_idx / len(train_ldr):.0f}%)]\t', end='')
                 for name, meter in algorithm.meters.items():
-                    print(f'{name}: {meter.val:.3f} (avg. {meter.avg:.3f})\t', end='')
+                    if wandb_log:
+                        wandb.log({name+"_avg": meter.avg, 'epoch': epoch, 'step':step})
+                    if meter.print:
+                        print(f'{name}: {meter.val:.3f} (avg. {meter.avg:.3f})\t', end='')
                 print(f'Time: {timer.batch_time.val:.3f} (avg. {timer.batch_time.avg:.3f})')
-
+                            
+                if wandb_log:
+                    for name, meter in algorithm.meters.items():
+                        wandb.log({name: meter.val, 'epoch': epoch, 'step':step})
             timer.batch_end()
 
         # save clean accuracies on validation/test sets
         test_clean_acc = misc.accuracy(algorithm, test_ldr, device)
+        if wandb_log:
+            wandb.log({'test_clean_acc': test_clean_acc, 'epoch': epoch, 'step':step})
+
         add_results_row([epoch, test_clean_acc, 'ERM', 'Test'])
 
         # save adversarial accuracies on validation/test sets
@@ -70,6 +91,9 @@ def main(args, hparams, test_hparams):
             test_adv_acc = misc.adv_accuracy(algorithm, test_ldr, device, attack)
             add_results_row([epoch, test_adv_acc, attack_name, 'Test'])
             test_adv_accs.append(test_adv_acc)
+            if wandb_log:
+                wandb.log({'test_acc_adv': test_acc, 'attack':attack_name, 'epoch': epoch, 'step':step})
+                wandb.log({'test_acc_adv_'+attack_name: test_acc, 'epoch': epoch, 'step':step})
 
         epoch_end = time.time()
         total_time += epoch_end - epoch_start
@@ -110,6 +134,7 @@ if __name__ == '__main__':
     parser.add_argument('--output_dir', type=str, default='train_output')
     parser.add_argument('--dataset', type=str, default='MNIST', help='Dataset to use')
     parser.add_argument('--algorithm', type=str, default='ERM', help='Algorithm to run')
+    parser.add_argument('--perturbation', type=str, default='Linf', help=' Linf or Rotation')
     parser.add_argument('--test_attacks', type=str, nargs='+', default=['PGD_Linf'])
     parser.add_argument('--hparams', type=str, help='JSON-serialized hparams dict')
     parser.add_argument('--hparams_seed', type=int, default=0, help='Seed for hyperparameters')
@@ -130,10 +155,10 @@ if __name__ == '__main__':
         raise NotImplementedError(f'Dataset {args.dataset} is not implemented.')
 
     if args.hparams_seed == 0:
-        hparams = hparams_registry.default_hparams(args.algorithm, args.dataset)
+        hparams = hparams_registry.default_hparams(args.algorithm, args.perturbation, args.dataset)
     else:
         seed = misc.seed_hash(args.hparams_seed, args.trial_seed)
-        hparams = hparams_registry.random_hparams(args.algorithm, args.dataset, seed)
+        hparams = hparams_registry.random_hparams(args.algorithm, args.perturbation, args.dataset, seed)
 
     print ('Hparams:')
     for k, v in sorted(hparams.items()):
@@ -142,7 +167,7 @@ if __name__ == '__main__':
     with open(os.path.join(args.output_dir, 'hparams.json'), 'w') as f:
         json.dump(hparams, f, indent=2)
 
-    test_hparams = hparams_registry.test_hparams(args.algorithm, args.dataset)
+    test_hparams = hparams_registry.test_hparams(args.algorithm, args.perturbation, args.dataset)
 
     print('Test hparams:')
     for k, v in sorted(test_hparams.items()):

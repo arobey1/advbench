@@ -46,7 +46,7 @@ def adv_accuracy(algorithm, loader, device, attack):
     algorithm.eval()
     for imgs, labels in loader:
         imgs, labels = imgs.to(device), labels.to(device)
-        adv_imgs = attack(imgs, labels)
+        adv_imgs, _ = attack(imgs, labels)
 
         with torch.no_grad():
             output = algorithm.predict(adv_imgs)

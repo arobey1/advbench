@@ -24,7 +24,7 @@ ALGORITHMS = [
 ]
 
 class Algorithm(nn.Module):
-    def __init__(self, input_shape, num_classes, hparams, device):
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
         super(Algorithm, self).__init__()
         self.hparams = hparams
         self.classifier = networks.Classifier(
@@ -57,8 +57,8 @@ class Algorithm(nn.Module):
         return self.meters_df
 
 class ERM(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(ERM, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(ERM, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
 
     def step(self, imgs, labels):
         self.optimizer.zero_grad()
@@ -69,13 +69,13 @@ class ERM(Algorithm):
         self.meters['loss'].update(loss.item(), n=imgs.size(0))
 
 class PGD(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(PGD, self).__init__(input_shape, num_classes, hparams, device)
-        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(PGD, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
 
     def step(self, imgs, labels):
 
-        adv_imgs = self.attack(imgs, labels)
+        adv_imgs, deltas =   self.attack(imgs, labels)
         self.optimizer.zero_grad()
         loss = F.cross_entropy(self.predict(adv_imgs), labels)
         loss.backward()
@@ -84,13 +84,13 @@ class PGD(Algorithm):
         self.meters['loss'].update(loss.item(), n=imgs.size(0))
 
 class FGSM(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(FGSM, self).__init__(input_shape, num_classes, hparams, device)
-        self.attack = attacks.FGSM_Linf(self.classifier, self.hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(FGSM, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+        self.attack = attacks.FGSM_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
 
     def step(self, imgs, labels):
 
-        adv_imgs = self.attack(imgs, labels)
+        adv_imgs, deltas =   self.attack(imgs, labels)
         self.optimizer.zero_grad()
         loss = F.cross_entropy(self.predict(adv_imgs), labels)
         loss.backward()
@@ -99,17 +99,17 @@ class FGSM(Algorithm):
         self.meters['loss'].update(loss.item(), n=imgs.size(0))
 
 class TRADES(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(TRADES, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(TRADES, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
         self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')  # TODO(AR): let's write a method to do the log-softmax part
-        self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device)
+        self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
         
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['invariance loss'] = meters.AverageMeter()
 
     def step(self, imgs, labels):
 
-        adv_imgs = self.attack(imgs, labels)
+        adv_imgs, deltas =   self.attack(imgs, labels)
         self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(adv_imgs), labels)
         robust_loss = self.kl_loss_fn(
@@ -126,9 +126,9 @@ class TRADES(Algorithm):
         return {'loss': total_loss.item()}
 
 class LogitPairingBase(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(LogitPairingBase, self).__init__(input_shape, num_classes, hparams, device)
-        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(LogitPairingBase, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
         self.meters['logit loss'] = meters.AverageMeter()
 
     def pairing_loss(self, imgs, adv_imgs):
@@ -136,13 +136,13 @@ class LogitPairingBase(Algorithm):
         return torch.norm(logit_diff, dim=1).mean()
 
 class ALP(LogitPairingBase):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(ALP, self).__init__(input_shape, num_classes, hparams, device)
-        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(ALP, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
         self.meters['robust loss'] = meters.AverageMeter()
 
     def step(self, imgs, labels):
-        adv_imgs = self.attack(imgs, labels)
+        adv_imgs, deltas =   self.attack(imgs, labels)
         self.optimizer.zero_grad()
         robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
         logit_pairing_loss = self.pairing_loss(imgs, adv_imgs)
@@ -155,14 +155,14 @@ class ALP(LogitPairingBase):
         self.meters['logit loss'].update(logit_pairing_loss.item(), n=imgs.size(0))
 
 class CLP(LogitPairingBase):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(CLP, self).__init__(input_shape, num_classes, hparams, device)
-        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(CLP, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
 
         self.meters['clean loss'] = meters.AverageMeter()
 
     def step(self, imgs, labels):
-        adv_imgs = self.attack(imgs, labels)
+        adv_imgs, deltas =   self.attack(imgs, labels)
         self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(imgs), labels)
         logit_pairing_loss = self.pairing_loss(imgs, adv_imgs)
@@ -175,17 +175,17 @@ class CLP(LogitPairingBase):
         self.meters['logit loss'].update(logit_pairing_loss.item(), n=imgs.size(0))
 
 class MART(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(MART, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(MART, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
         self.kl_loss_fn = nn.KLDivLoss(reduction='none')
-        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
+        self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
 
         self.meters['robust loss'] = meters.AverageMeter()
         self.meters['invariance loss'] = meters.AverageMeter()
 
     def step(self, imgs, labels):
         
-        adv_imgs = self.attack(imgs, labels)
+        adv_imgs, deltas =   self.attack(imgs, labels)
         self.optimizer.zero_grad()
         clean_output = self.classifier(imgs)
         adv_output = self.classifier(adv_imgs)
@@ -210,14 +210,14 @@ class MMA(Algorithm):
     pass
 
 class Gaussian_DALE(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(Gaussian_DALE, self).__init__(input_shape, num_classes, hparams, device)
-        self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(Gaussian_DALE, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+        self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['robust loss'] = meters.AverageMeter()
 
     def step(self, imgs, labels):
-        adv_imgs = self.attack(imgs, labels)
+        adv_imgs, deltas =   self.attack(imgs, labels)
         self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(imgs), labels)
         robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
@@ -230,14 +230,14 @@ class Gaussian_DALE(Algorithm):
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
 
 class Laplacian_DALE(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(Laplacian_DALE, self).__init__(input_shape, num_classes, hparams, device)
-        self.attack = attacks.LMC_Laplacian_Linf(self.classifier, self.hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(Laplacian_DALE, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+        self.attack = attacks.LMC_Laplacian_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['robust loss'] = meters.AverageMeter()
 
     def step(self, imgs, labels):
-        adv_imgs = self.attack(imgs, labels)
+        adv_imgs, deltas =   self.attack(imgs, labels)
         self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(imgs), labels)
         robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
@@ -250,24 +250,28 @@ class Laplacian_DALE(Algorithm):
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
 
 class PrimalDualBase(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(PrimalDualBase, self).__init__(input_shape, num_classes, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(PrimalDualBase, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
         self.dual_params = {'dual_var': torch.tensor(1.0).to(self.device)}
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['robust loss'] = meters.AverageMeter()
         self.meters['dual variable'] = meters.AverageMeter()
+        self.meters['delta mean'] = meters.AverageMeter()
+        self.meters['delta L1-border'] = meters.AverageMeter()
+        self.meters['delta hist'] = meters.WBHistogramMeter()
+
 
 class Gaussian_DALE_PD(PrimalDualBase):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(Gaussian_DALE_PD, self).__init__(input_shape, num_classes, hparams, device)
-        self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(Gaussian_DALE_PD, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+        self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
             parameters=self.dual_params,
             margin=self.hparams['g_dale_pd_margin'],
-            eta=self.hparams['g_dale_pd_step_size'])
+            eta=self.hparams['g_dale_pd_eta'])
 
     def step(self, imgs, labels):
-        adv_imgs = self.attack(imgs, labels)
+        adv_imgs, deltas =self.attack(imgs, labels)
         self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(imgs), labels)
         robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
@@ -275,23 +279,24 @@ class Gaussian_DALE_PD(PrimalDualBase):
         total_loss.backward()
         self.optimizer.step()
         self.pd_optimizer.step(clean_loss.detach())
-
         self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
-
+        self.meters['delta mean'].update(deltas.mean().item(), n=imgs.size(0))
+        self.meters['delta L1-border'].update((torch.abs(deltas)-self.hparams['epsilon']).mean().item(), n=imgs.size(0))
+        #print(deltas[0])
 class Gaussian_DALE_PD_Reverse(PrimalDualBase):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(Gaussian_DALE_PD_Reverse, self).__init__(input_shape, num_classes, hparams, device)
-        self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(Gaussian_DALE_PD_Reverse, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+        self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
             parameters=self.dual_params,
             margin=self.hparams['g_dale_pd_margin'],
-            eta=self.hparams['g_dale_pd_step_size'])
+            eta=self.hparams['g_dale_pd_eta'])
 
     def step(self, imgs, labels):
-        adv_imgs = self.attack(imgs, labels)
+        adv_imgs, deltas =self.attack(imgs, labels)
         self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(imgs), labels)
         robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
@@ -304,19 +309,21 @@ class Gaussian_DALE_PD_Reverse(PrimalDualBase):
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
+        self.meters['delta mean'].update(deltas.mean().item(), n=1)
+        self.meters['delta L2-norm'].update(torch.linalg.norm(deltas).item()/imgs.shape[0], n=1)
 
 class KL_DALE_PD(PrimalDualBase):
-    def __init__(self, input_shape, num_classes, hparams, device):
-        super(KL_DALE_PD, self).__init__(input_shape, num_classes, hparams, device)
-        self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(KL_DALE_PD, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+        self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
         self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
             parameters=self.dual_params,
             margin=self.hparams['g_dale_pd_margin'],
-            eta=self.hparams['g_dale_pd_step_size'])
+            eta=self.hparams['g_dale_pd_eta'])
 
     def step(self, imgs, labels):
-        adv_imgs = self.attack(imgs, labels)
+        adv_imgs, deltas =self.attack(imgs, labels)
         self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(imgs), labels)
         robust_loss = self.kl_loss_fn(
@@ -331,3 +338,23 @@ class KL_DALE_PD(PrimalDualBase):
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
+
+class NUTS_DALE(Algorithm):
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+        super(NUTS_DALE, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+        self.attack = attacks.NUTS(self.classifier, self.hparams, device, perturbation=perturbation)
+        self.meters['clean loss'] = meters.AverageMeter()
+        self.meters['robust loss'] = meters.AverageMeter()
+
+    def step(self, imgs, labels):
+        adv_imgs, deltas = self.attack(imgs, labels)
+        self.optimizer.zero_grad()
+        clean_loss = F.cross_entropy(self.predict(imgs), labels)
+        robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
+        total_loss = robust_loss + self.hparams['l_dale_nu'] * clean_loss
+        total_loss.backward()
+        self.optimizer.step()
+
+        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
+        self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))

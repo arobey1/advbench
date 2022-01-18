@@ -55,7 +55,7 @@ class CIFAR10(AdvRobDataset):
             transforms.ToTensor()])
         test_transforms = transforms.ToTensor()
 
-        train_data = CIFAR10_(root, train=True, transform=train_transforms)
+        train_data = CIFAR10_(root, train=True, transform=train_transforms, download=True)
         self.splits['train'] = train_data
         # self.splits['train'] = Subset(train_data, range(5000))
 
@@ -95,7 +95,7 @@ class MNIST(AdvRobDataset):
         
         xforms = transforms.ToTensor()
 
-        train_data = MNIST_(root, train=True, transform=xforms)
+        train_data = MNIST_(root, train=True, transform=xforms,  download=True)
         self.splits['train'] = train_data
         # self.splits['train'] = Subset(train_data, range(60000))
 

@@ -1,0 +1,7 @@
+{
+  "epsilon": 30,
+  "pgd_n_steps": 30,
+  "pgd_step_size": 5,
+  "trades_n_steps": 40,
+  "trades_step_size": 5
+}
