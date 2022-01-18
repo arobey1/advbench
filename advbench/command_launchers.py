@@ -1,16 +1,17 @@
-
-
 import subprocess
 import time
 import torch
+
 
 def local_launcher(commands):
     for cmd in commands:
         subprocess.call(cmd, shell=True)
 
+
 def dummy_launcher(commands):
     for cmd in commands:
-        print(f'Dummy launcher: {cmd}')
+        print(f"Dummy launcher: {cmd}")
+
 
 def multi_gpu_launcher(commands):
 
@@ -25,13 +26,13 @@ def multi_gpu_launcher(commands):
                 # Nothing is running on this GPU; launch a command
                 cmd = commands.pop(0)
                 new_proc = subprocess.Popen(
-                    f'CUDA_VISIBLE_DEVICES={gpu_idx} {cmd}',
-                    shell=True)
+                    f"CUDA_VISIBLE_DEVICES={gpu_idx} {cmd}", shell=True
+                )
                 procs_by_gpu[gpu_idx] = new_proc
                 break
 
         time.sleep(1)
-    
+
     # Wait for the last few tasks to finish before returning
     for p in procs_by_gpu:
         if p is not None:
@@ -39,7 +40,7 @@ def multi_gpu_launcher(commands):
 
 
 REGISTRY = {
-    'local': local_launcher,
-    'dummy': dummy_launcher,
-    'multi_gpu': multi_gpu_launcher
+    "local": local_launcher,
+    "dummy": dummy_launcher,
+    "multi_gpu": multi_gpu_launcher,
 }

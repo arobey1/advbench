@@ -5,25 +5,30 @@ from functools import wraps
 from time import time
 import pandas as pd
 
+
 def timing(f):
     @wraps(f)
     def wrap(*args, **kw):
         ts = time()
         result = f(*args, **kw)
         te = time()
-        print(f'func:{f.__name__} took: {te-ts:.3f} sec')
+        print(f"func:{f.__name__} took: {te-ts:.3f} sec")
         return result
+
     return wrap
+
 
 def seed_hash(*args):
     """Derive an integer hash from all args, for use as a random seed."""
 
     args_str = str(args)
-    return int(hashlib.md5(args_str.encode("utf-8")).hexdigest(), 16) % (2**31)
+    return int(hashlib.md5(args_str.encode("utf-8")).hexdigest(), 16) % (2 ** 31)
+
 
 def print_full_df(df):
-    with pd.option_context('display.max_rows', None, 'display.max_columns', None):
+    with pd.option_context("display.max_rows", None, "display.max_columns", None):
         print(df)
+
 
 @torch.no_grad()
 def accuracy(algorithm, loader, device):
@@ -38,7 +43,8 @@ def accuracy(algorithm, loader, device):
         total += imgs.size(0)
     algorithm.train()
 
-    return 100. * correct / total
+    return 100.0 * correct / total
+
 
 def adv_accuracy(algorithm, loader, device, attack):
     correct, total = 0, 0
@@ -56,7 +62,8 @@ def adv_accuracy(algorithm, loader, device, attack):
         total += imgs.size(0)
     algorithm.train()
 
-    return 100. * correct / total
+    return 100.0 * correct / total
+
 
 class Tee:
     def __init__(self, fname, mode="a"):
