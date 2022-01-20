@@ -26,7 +26,6 @@ def _hparams(algorithm: str, perturbation:str, dataset: str, random_seed: int):
 
     # Unconditional hparam definitions.
 
-
     _hparam('batch_size', 128, lambda r: int(2 ** r.uniform(3, 8)))
 
     # optimization
@@ -146,7 +145,7 @@ def _hparams(algorithm: str, perturbation:str, dataset: str, random_seed: int):
         if dataset == 'MNIST':
             _hparam('l_dale_n_steps', 15, lambda r: 15)
             _hparam('l_dale_step_size', 10, lambda r: 10)
-            _hparam('l_dale_noise_coeff', 0.001, lambda r: 10 ** r.uniform(-6.0, -2.0))
+            _hparam('l_dale_noise_coeff', 1, lambda r: 10 ** r.uniform(-1.0, -1.0))
         elif dataset == 'CIFAR10':
             _hparam('l_dale_n_steps', 10, lambda r: 10)
             _hparam('l_dale_step_size', 0.007, lambda r: 0.007)
@@ -158,6 +157,9 @@ def _hparams(algorithm: str, perturbation:str, dataset: str, random_seed: int):
         _hparam('g_dale_pd_step_size', 10, lambda r: 10)
         _hparam('g_dale_pd_eta', 0.01, lambda r: 0.01)
         _hparam('g_dale_pd_margin', 1.469, lambda r: 1.469)
+
+       # Worst of K
+        _hparam('worst_of_k_steps', 10, lambda r: 10)
 
         # DALE NUTS
         if dataset == 'MNIST':
@@ -183,6 +185,8 @@ def test_hparams(algorithm: str, perturbation:str, dataset: str):
             _hparam('epsilon', 0.3)
         elif dataset == 'CIFAR10':
             _hparam('epsilon', 8/255.)
+        ##### Worst of K ######
+        _hparam('worst_of_k_steps', 10)
 
         ##### PGD #####
         if dataset == 'MNIST':
@@ -200,6 +204,8 @@ def test_hparams(algorithm: str, perturbation:str, dataset: str):
             _hparam('trades_n_steps', 20)
             _hparam('trades_step_size', 2/255.)
     elif perturbation=='Rotation':
+        ##### Worst of K ######
+        _hparam('worst_of_k_steps', 10)
         if dataset == 'MNIST':
             _hparam('epsilon', 30)
         elif dataset == 'CIFAR10':

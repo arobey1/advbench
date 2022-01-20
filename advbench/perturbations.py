@@ -1,4 +1,4 @@
-from kornia.geometry import rotate
+from kornia.geometry import rotate, translate
 import torch
 
 class Perturbation():
@@ -45,4 +45,22 @@ class Rotation(Perturbation):
     def delta_init(self, imgs):
         eps = self.eps
         delta_init =   2*eps* torch.randn(imgs.shape[0])-eps
+        return delta_init
+
+class Traslation(Perturbation):
+    def __init__(self, epsilon):
+        super(Traslation, self).__init__(epsilon)
+    def clamp_delta(self, delta, imgs):
+        """Clamp delta so that (1) the perturbation is bounded
+        in the l_inf norm by self.hparams['epsilon'] and (2) so that the
+        perturbed image is in [0, 1]^d."""
+        delta = torch.clamp(delta, -self.eps, self.eps)
+        return delta
+
+    def perturb_img(self, imgs, delta):
+        return translate(imgs, delta)
+
+    def delta_init(self, imgs):
+        eps = self.eps
+        delta_init =   2*eps* torch.randn((imgs.shape[0], imgs.shape[-1]))-eps
         return delta_init

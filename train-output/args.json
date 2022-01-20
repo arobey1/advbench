@@ -5,7 +5,7 @@
   "algorithm": "Gaussian_DALE_PD",
   "perturbation": "Rotation",
   "test_attacks": [
-    "PGD_Linf"
+    "Worst_Of_K"
   ],
   "hparams": null,
   "hparams_seed": 0,

@@ -27,6 +27,8 @@ class AdvRobDataset(Dataset):
     N_EPOCHS = None          # Subclasses should override
     CHECKPOINT_FREQ = None   # Subclasses should override
     LOG_INTERVAL = None      # Subclasses should override
+    LOSS_LANDSCAPE_INTERVAL = None # Subclasses should override
+    LOSS_LANDSCAPE_BATCHES = None # Subclasses should override
     HAS_LR_SCHEDULE = False  # Default, subclass may override
 
     def __init__(self):
@@ -40,6 +42,8 @@ class CIFAR10(AdvRobDataset):
     N_EPOCHS = 200
     CHECKPOINT_FREQ = 10
     LOG_INTERVAL = 100
+    LOSS_LANDSCAPE_INTERVAL = 10
+    LOSS_LANDSCAPE_BATCHES = 20
     HAS_LR_SCHEDULE = True
 
     # test adversary parameters
@@ -84,6 +88,8 @@ class MNIST(AdvRobDataset):
     N_EPOCHS = 50
     CHECKPOINT_FREQ = 10
     LOG_INTERVAL = 100
+    LOSS_LANDSCAPE_INTERVAL = 1
+    LOSS_LANDSCAPE_BATCHES = 40
     HAS_LR_SCHEDULE = False
 
     # test adversary parameters

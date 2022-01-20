@@ -1,3 +1,7 @@
 advbench/data/*
 __pycache__/
 .vscode
+wandb/*
+*.swp
+*train-output/*
+*.pkl

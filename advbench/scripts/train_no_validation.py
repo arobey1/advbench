@@ -10,7 +10,7 @@ from advbench import datasets
 from advbench import algorithms
 from advbench import attacks
 from advbench import hparams_registry
-from advbench.lib import misc, meters
+from advbench.lib import misc, meters, plotting, logging
 
 try:
     import wandb
@@ -43,13 +43,18 @@ def main(args, hparams, test_hparams):
         defaults = [args.algorithm, args.dataset, args.trial_seed, args.output_dir]
         results_df.loc[len(results_df)] = data + defaults
     if wandb_log:
-        wandb.init(project="adversarial-constrained")
+        name = f"{args.dataset} {args.perturbation} {args.algorithm} {args.test_attacks} {args.trial_seed} {args.seed}"
+        wandb.init(project="adversarial-constrained", name=name)
         wandb.config.update(args)
         wandb.config.update(hparams)
+        perturbation_eval = logging.GridEval(args.perturbation, 
+                                            dataset.LOSS_LANDSCAPE_BATCHES,
+                                            int(2*hparams["epsilon"]/0.5), 
+                                            hparams["epsilon"], 
+                                            device)
     total_time = 0
     step = 0
     for epoch in range(0, dataset.N_EPOCHS):
-
         if adjust_lr is not None:
             adjust_lr(algorithm.optimizer, epoch, hparams)
         if wandb_log:
@@ -67,15 +72,11 @@ def main(args, hparams, test_hparams):
                 print(f'[{batch_idx * imgs.size(0)}/{len(train_ldr.dataset)}', end=' ')
                 print(f'({100. * batch_idx / len(train_ldr):.0f}%)]\t', end='')
                 for name, meter in algorithm.meters.items():
-                    if wandb_log:
-                        wandb.log({name+"_avg": meter.avg, 'epoch': epoch, 'step':step})
                     if meter.print:
                         print(f'{name}: {meter.val:.3f} (avg. {meter.avg:.3f})\t', end='')
+                        if wandb_log:
+                            wandb.log({name+"_avg": meter.avg, 'epoch': epoch, 'step':step})
                 print(f'Time: {timer.batch_time.val:.3f} (avg. {timer.batch_time.avg:.3f})')
-                            
-                if wandb_log:
-                    for name, meter in algorithm.meters.items():
-                        wandb.log({name: meter.val, 'epoch': epoch, 'step':step})
             timer.batch_end()
 
         # save clean accuracies on validation/test sets
@@ -88,12 +89,17 @@ def main(args, hparams, test_hparams):
         # save adversarial accuracies on validation/test sets
         test_adv_accs = []
         for attack_name, attack in test_attacks.items():
-            test_adv_acc = misc.adv_accuracy(algorithm, test_ldr, device, attack)
+            test_adv_acc, loss, deltas = misc.adv_accuracy_loss_delta(algorithm, test_ldr, device, attack)
             add_results_row([epoch, test_adv_acc, attack_name, 'Test'])
             test_adv_accs.append(test_adv_acc)
             if wandb_log:
-                wandb.log({'test_acc_adv': test_acc, 'attack':attack_name, 'epoch': epoch, 'step':step})
-                wandb.log({'test_acc_adv_'+attack_name: test_acc, 'epoch': epoch, 'step':step})
+                wandb.log({'test_acc_adv_'+attack_name: test_adv_acc, 'test_loss_adv_'+attack_name: loss.mean(), 'epoch': epoch, 'step':step})
+                plotting.plot_perturbed_wandb(deltas, loss, name="test_loss_adv"+attack_name, wandb_args = {'epoch': epoch, 'step':step})
+                
+        if batch_idx % dataset.LOSS_LANDSCAPE_INTERVAL == 0 and wandb_log:
+        # log loss landscape
+            loss, deltas = perturbation_eval.eval_perturbed(algorithm, test_ldr)
+            plotting.plot_perturbed_wandb(deltas.cpu().numpy(), loss.cpu().numpy(), name="test_loss_landscape", wandb_args = {'epoch': epoch, 'step':step})
 
         epoch_end = time.time()
         total_time += epoch_end - epoch_start
@@ -106,7 +112,8 @@ def main(args, hparams, test_hparams):
         print(f'Dataset: {args.dataset}\t', end='')
         print(f'Path: {args.output_dir}')
         for name, meter in algorithm.meters.items():
-            print(f'Avg. train {name}: {meter.avg:.3f}\t', end='')
+            if meter.print:
+                print(f'Avg. train {name}: {meter.avg:.3f}\t', end='')
         print(f'\nClean val. accuracy: {test_clean_acc:.3f}\t', end='')
         for attack_name, acc in zip(test_attacks.keys(), test_adv_accs):
             print(f'{attack_name} val. accuracy: {acc:.3f}\t', end='')

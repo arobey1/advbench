@@ -1,9 +1,11 @@
-import torch
 import hashlib
 import sys
 from functools import wraps
 from time import time
+import numpy as np
 import pandas as pd
+import torch
+import torch.nn.functional as F
 
 def timing(f):
     @wraps(f)
@@ -57,6 +59,28 @@ def adv_accuracy(algorithm, loader, device, attack):
     algorithm.train()
 
     return 100. * correct / total
+
+def adv_accuracy_loss_delta(algorithm, loader, device, attack):
+    correct, total = 0, 0
+    losses, deltas = [], []
+
+    algorithm.eval()
+    for imgs, labels in loader:
+        imgs, labels = imgs.to(device), labels.to(device)
+        adv_imgs, delta = attack(imgs, labels)
+
+        with torch.no_grad():
+            output = algorithm.predict(adv_imgs)
+            loss = F.cross_entropy(output, labels)
+            pred = output.argmax(dim=1, keepdim=True)
+        losses.append(loss.cpu().numpy())
+        deltas.append(delta.cpu().numpy())
+
+        correct += pred.eq(labels.view_as(pred)).sum().item()
+        total += imgs.size(0)
+    algorithm.train()
+    acc = 100. * correct / total
+    return acc, np.stack(losses), np.stack(deltas)
 
 class Tee:
     def __init__(self, fname, mode="a"):

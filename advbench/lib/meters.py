@@ -1,4 +1,5 @@
 import time
+
 try:
     import wandb
     wandb_log=True
@@ -40,22 +41,23 @@ class TimeMeter:
         self.start = time.time()
 if wandb:
     class WBHistogramMeter:
-        def __init__(self):
+        def __init__(self, name):
+            self.print = False
+            self.name = name
+
+        def reset(self):
+            pass
+
+        def update(self, val):
+            wandb.log({self.name: wandb.Histogram(val)})
+
+else:
+    class WBHistogramMeter:
+        def __init__(self, name):
             self.print = False
 
         def reset(self):
             pass
 
         def update(self, val):
-            wandb.log({"delta": wandb.Histogram(delta)})
-
-else:
-    class WBHistogramMeter:
-        def __init__(self):
-            self.print = False
-
-        def reset(self):
-            pass
-
-        def update(self, delta):
             pass

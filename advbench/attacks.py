@@ -1,5 +1,6 @@
 import os, sys
 import hamiltorch
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -131,6 +132,28 @@ class LMC_Laplacian_Linf(Attack_Linf):
             delta = self.perturbation.clamp_delta(delta, imgs)
         adv_imgs = self.perturbation.perturb_img(imgs, delta)
 
+        self.classifier.train()
+        return adv_imgs.detach(), delta.detach()
+
+class Worst_Of_K(Attack_Linf):
+    def __init__(self, classifier,  hparams, device, perturbation='Linf'):
+        super(Worst_Of_K, self).__init__(classifier,  hparams, device,  perturbation=perturbation)
+
+    def forward(self, imgs, labels):
+        self.classifier.eval()
+        batch_size = imgs.size(0)
+        delta = self.perturbation.delta_init(imgs).to(self.device)
+        deltas = []
+        adv_loss = []
+        for i in range(self.hparams['worst_of_k_steps']):
+            with torch.no_grad():
+                delta = self.perturbation.delta_init(imgs).to(self.device)
+                delta = self.perturbation.clamp_delta(delta, imgs)
+                adv_imgs = self.perturbation.perturb_img(imgs, delta)
+                adv_loss.append(torch.log(1 - torch.softmax(self.classifier(adv_imgs), dim=1)[range(batch_size), labels]).mean().item())
+                deltas.append(delta)
+        delta = deltas[int(np.amax(adv_loss))]
+        adv_imgs = self.perturbation.perturb_img(imgs, delta)
         self.classifier.train()
         return adv_imgs.detach(), delta.detach()
 

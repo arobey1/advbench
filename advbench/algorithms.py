@@ -49,10 +49,17 @@ class Algorithm(nn.Module):
 
     def meters_to_df(self, epoch):
         if self.meters_df is None:
-            columns = ['Epoch'] + list(self.meters.keys())
+            keys = []
+            for key, val in self.meters.items():
+                if val.print:
+                    keys.append(key)
+            columns = ['Epoch'] + keys
             self.meters_df = pd.DataFrame(columns=columns)
-
-        values = [epoch] + [m.avg for m in self.meters.values()]
+            self.meters_df_keys = keys
+        metrics = []
+        for key in self.meters_df_keys:
+            metrics.append(self.meters[key].avg)
+        values = [epoch] + metrics
         self.meters_df.loc[len(self.meters_df)] = values
         return self.meters_df
 
@@ -256,9 +263,8 @@ class PrimalDualBase(Algorithm):
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['robust loss'] = meters.AverageMeter()
         self.meters['dual variable'] = meters.AverageMeter()
-        self.meters['delta mean'] = meters.AverageMeter()
         self.meters['delta L1-border'] = meters.AverageMeter()
-        self.meters['delta hist'] = meters.WBHistogramMeter()
+        self.meters['delta hist'] = meters.WBHistogramMeter("delta")
 
 
 class Gaussian_DALE_PD(PrimalDualBase):
@@ -283,8 +289,8 @@ class Gaussian_DALE_PD(PrimalDualBase):
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
-        self.meters['delta mean'].update(deltas.mean().item(), n=imgs.size(0))
         self.meters['delta L1-border'].update((torch.abs(deltas)-self.hparams['epsilon']).mean().item(), n=imgs.size(0))
+        self.meters['delta hist'].update(deltas.cpu())        
         #print(deltas[0])
 class Gaussian_DALE_PD_Reverse(PrimalDualBase):
     def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
@@ -309,8 +315,8 @@ class Gaussian_DALE_PD_Reverse(PrimalDualBase):
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
-        self.meters['delta mean'].update(deltas.mean().item(), n=1)
-        self.meters['delta L2-norm'].update(torch.linalg.norm(deltas).item()/imgs.shape[0], n=1)
+        self.meters['delta L1-border'].update((torch.abs(deltas)-self.hparams['epsilon']).mean().item(), n=imgs.size(0))
+        self.meters['delta hist'].update(deltas.cpu())
 
 class KL_DALE_PD(PrimalDualBase):
     def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
