@@ -9,7 +9,7 @@ def Optimizer(classifier, dataset, hparams):
         return optim.Adadelta(
             classifier.parameters(),
             lr=1.0)
-    elif dataset == 'CIFAR10':
+    elif dataset == 'CIFAR10' or dataset == 'SVHN':
         return optim.SGD(
             classifier.parameters(),
             lr=hparams['learning_rate'],

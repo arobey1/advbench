@@ -103,13 +103,12 @@ class TERM(Algorithm):
     def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
         super(TERM, self).__init__(input_shape, num_classes, dataset, hparams, device)
         self.meters['tilted loss'] = meters.AverageMeter()
-        self.t = self.hparams['term_t']
+        self.t = torch.tensor(self.hparams['term_t'])
 
     def step(self, imgs, labels, batch_idx=None):
         self.optimizer.zero_grad()
         loss = F.cross_entropy(self.predict(imgs), labels, reduction='none')
         term_loss = torch.log(torch.exp(self.t * loss).mean() + 1e-6) / self.t
-        print(loss)
         term_loss.backward()
         self.optimizer.step()
         
