@@ -3,5 +3,5 @@ __pycache__/
 .vscode
 wandb/*
 *.swp
-*train-output/*
+train-output/*
 *.pkl

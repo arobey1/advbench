@@ -288,18 +288,19 @@ class Gaussian_DALE_PD(PrimalDualBase):
         self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
-        self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
+        self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=imgs.size(0))
         self.meters['delta L1-border'].update((torch.abs(deltas)-self.hparams['epsilon']).mean().item(), n=imgs.size(0))
         self.meters['delta hist'].update(deltas.cpu())        
         #print(deltas[0])
+        
 class Gaussian_DALE_PD_Reverse(PrimalDualBase):
     def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
         super(Gaussian_DALE_PD_Reverse, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
         self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
             parameters=self.dual_params,
-            margin=self.hparams['g_dale_pd_margin'],
-            eta=self.hparams['g_dale_pd_eta'])
+            margin=self.hparams['g_dale_pd_inv_margin'],
+            eta=self.hparams['g_dale_pd_inv_eta'])
 
     def step(self, imgs, labels):
         adv_imgs, deltas =self.attack(imgs, labels)

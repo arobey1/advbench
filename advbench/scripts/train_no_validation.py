@@ -19,8 +19,13 @@ except ImportError:
     wandb_log=False
 
 def main(args, hparams, test_hparams):
-
+    
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"Using {device}")
+    if args.perturbation=='SE':
+        hparams['epsilon'] = torch.tensor([hparams[f'epsilon_{i}'] for i in ("rot","tx","ty")]).to(device)
+        test_hparams['epsilon'] = torch.tensor([test_hparams[f'epsilon_{tfm}'] for tfm in ("rot","tx","ty")]).to(device)
+
 
     dataset = vars(datasets)[args.dataset](args.data_dir)
     train_ldr, val_ldr, test_ldr = datasets.to_loaders(dataset, hparams)
@@ -47,11 +52,12 @@ def main(args, hparams, test_hparams):
         wandb.init(project="adversarial-constrained", name=name)
         wandb.config.update(args)
         wandb.config.update(hparams)
-        perturbation_eval = logging.GridEval(args.perturbation, 
-                                            dataset.LOSS_LANDSCAPE_BATCHES,
-                                            int(2*hparams["epsilon"]/0.5), 
-                                            hparams["epsilon"], 
-                                            device)
+        if args.perturbation != 'SE':
+            perturbation_eval = logging.GridEval(args.perturbation, 
+                                                dataset.LOSS_LANDSCAPE_BATCHES,
+                                                int(2*hparams["epsilon"]/0.5), 
+                                                hparams["epsilon"], 
+                                                device)
     total_time = 0
     step = 0
     for epoch in range(0, dataset.N_EPOCHS):
@@ -78,6 +84,7 @@ def main(args, hparams, test_hparams):
                             wandb.log({name+"_avg": meter.avg, 'epoch': epoch, 'step':step})
                 print(f'Time: {timer.batch_time.val:.3f} (avg. {timer.batch_time.avg:.3f})')
             timer.batch_end()
+            break
 
         # save clean accuracies on validation/test sets
         test_clean_acc = misc.accuracy(algorithm, test_ldr, device)
@@ -93,10 +100,11 @@ def main(args, hparams, test_hparams):
             add_results_row([epoch, test_adv_acc, attack_name, 'Test'])
             test_adv_accs.append(test_adv_acc)
             if wandb_log:
+                print("logging attack")
                 wandb.log({'test_acc_adv_'+attack_name: test_adv_acc, 'test_loss_adv_'+attack_name: loss.mean(), 'epoch': epoch, 'step':step})
                 plotting.plot_perturbed_wandb(deltas, loss, name="test_loss_adv"+attack_name, wandb_args = {'epoch': epoch, 'step':step})
                 
-        if batch_idx % dataset.LOSS_LANDSCAPE_INTERVAL == 0 and wandb_log:
+        if args.perturbation != 'SE' and wandb_log and batch_idx % dataset.LOSS_LANDSCAPE_INTERVAL == 0:
         # log loss landscape
             loss, deltas = perturbation_eval.eval_perturbed(algorithm, test_ldr)
             plotting.plot_perturbed_wandb(deltas.cpu().numpy(), loss.cpu().numpy(), name="test_loss_landscape", wandb_args = {'epoch': epoch, 'step':step})

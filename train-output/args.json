@@ -3,7 +3,7 @@
   "output_dir": "train-output",
   "dataset": "MNIST",
   "algorithm": "Gaussian_DALE_PD",
-  "perturbation": "Rotation",
+  "perturbation": "SE",
   "test_attacks": [
     "Worst_Of_K"
   ],

@@ -30,6 +30,6 @@ def tick_density(plot, every=2, mod_val=1, axis='x'):
 def plot_perturbed_wandb(deltas, metric, name="loss", wandb_args = {}):
     data = [[x, y] for (x, y) in zip(deltas.tolist(), metric.tolist())]
     table = wandb.Table(data=data, columns = ["delta", name])
-    wandb_dict = {"name" : wandb.plot.scatter(table, "delta", name)}
+    wandb_dict = {name : wandb.plot.scatter(table, "delta", name)}
     wandb_dict.update(wandb_args)
     wandb.log(wandb_dict)
