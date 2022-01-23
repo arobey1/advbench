@@ -84,7 +84,6 @@ def main(args, hparams, test_hparams):
                             wandb.log({name+"_avg": meter.avg, 'epoch': epoch, 'step':step})
                 print(f'Time: {timer.batch_time.val:.3f} (avg. {timer.batch_time.avg:.3f})')
             timer.batch_end()
-            break
 
         # save clean accuracies on validation/test sets
         test_clean_acc = misc.accuracy(algorithm, test_ldr, device)
@@ -99,12 +98,12 @@ def main(args, hparams, test_hparams):
             test_adv_acc, loss, deltas = misc.adv_accuracy_loss_delta(algorithm, test_ldr, device, attack)
             add_results_row([epoch, test_adv_acc, attack_name, 'Test'])
             test_adv_accs.append(test_adv_acc)
-            if wandb_log:
+            if wandb_log and args.perturbation!="Linf":
                 print("logging attack")
                 wandb.log({'test_acc_adv_'+attack_name: test_adv_acc, 'test_loss_adv_'+attack_name: loss.mean(), 'epoch': epoch, 'step':step})
                 plotting.plot_perturbed_wandb(deltas, loss, name="test_loss_adv"+attack_name, wandb_args = {'epoch': epoch, 'step':step})
                 
-        if args.perturbation != 'SE' and wandb_log and batch_idx % dataset.LOSS_LANDSCAPE_INTERVAL == 0:
+        if args.perturbation == 'Rotation' and wandb_log and batch_idx % dataset.LOSS_LANDSCAPE_INTERVAL == 0:
         # log loss landscape
             loss, deltas = perturbation_eval.eval_perturbed(algorithm, test_ldr)
             plotting.plot_perturbed_wandb(deltas.cpu().numpy(), loss.cpu().numpy(), name="test_loss_landscape", wandb_args = {'epoch': epoch, 'step':step})
