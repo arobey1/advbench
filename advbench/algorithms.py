@@ -20,7 +20,19 @@ ALGORITHMS = [
     'Laplacian_DALE',
     'Gaussian_DALE_PD',
     'Gaussian_DALE_PD_Reverse',
-    'KL_DALE_PD'
+    'KL_DALE_PD',
+    'NUTS_DALE',
+    'Worst_Of_K',
+    'Rand_Aug',
+]
+
+PD_ALGORITHMS = [
+    'Gaussian_DALE',
+    'Laplacian_DALE',
+    'Gaussian_DALE_PD',
+    'Gaussian_DALE_PD_Reverse',
+    'KL_DALE_PD',
+    'NUTS_DALE',
 ]
 
 class Algorithm(nn.Module):
@@ -257,9 +269,9 @@ class Laplacian_DALE(Algorithm):
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
 
 class PrimalDualBase(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf', init=1.0):
         super(PrimalDualBase, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
-        self.dual_params = {'dual_var': torch.tensor(1.0).to(self.device)}
+        self.dual_params = {'dual_var': torch.tensor(init).to(self.device)}
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['robust loss'] = meters.AverageMeter()
         self.meters['dual variable'] = meters.AverageMeter()
@@ -268,8 +280,8 @@ class PrimalDualBase(Algorithm):
 
 
 class Gaussian_DALE_PD(PrimalDualBase):
-    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
-        super(Gaussian_DALE_PD, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf', init=1.0):
+        super(Gaussian_DALE_PD, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation, init=init)
         self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
             parameters=self.dual_params,
@@ -294,8 +306,8 @@ class Gaussian_DALE_PD(PrimalDualBase):
         #print(deltas[0])
         
 class Gaussian_DALE_PD_Reverse(PrimalDualBase):
-    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
-        super(Gaussian_DALE_PD_Reverse, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf', init=1.0):
+        super(Gaussian_DALE_PD_Reverse, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation, init=init)
         self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
             parameters=self.dual_params,
@@ -311,7 +323,6 @@ class Gaussian_DALE_PD_Reverse(PrimalDualBase):
         total_loss.backward()
         self.optimizer.step()
         self.pd_optimizer.step(robust_loss.detach())
-
         self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
@@ -320,8 +331,8 @@ class Gaussian_DALE_PD_Reverse(PrimalDualBase):
         self.meters['delta hist'].update(deltas.cpu())
 
 class KL_DALE_PD(PrimalDualBase):
-    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
-        super(KL_DALE_PD, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf', init=1.0):
+        super(KL_DALE_PD, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation, init=init)
         self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device, perturbation=perturbation)
         self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
@@ -347,8 +358,8 @@ class KL_DALE_PD(PrimalDualBase):
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
 
 class NUTS_DALE(Algorithm):
-    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf'):
-        super(NUTS_DALE, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation)
+    def __init__(self, input_shape, num_classes, hparams, device, perturbation='Linf', init=1.0):
+        super(NUTS_DALE, self).__init__(input_shape, num_classes, hparams, device, perturbation=perturbation, init=init)
         self.attack = attacks.NUTS(self.classifier, self.hparams, device, perturbation=perturbation)
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['robust loss'] = meters.AverageMeter()

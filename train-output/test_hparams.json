@@ -1,8 +1,6 @@
 {
   "worst_of_k_steps": 100,
-  "epsilon_rot": 30,
-  "epsilon_tx": 3,
-  "epsilon_ty": 3,
+  "epsilon": 30,
   "pgd_n_steps": 30,
   "pgd_step_size": 2,
   "trades_n_steps": 40,

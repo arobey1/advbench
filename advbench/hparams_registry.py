@@ -144,7 +144,7 @@ def _hparams(algorithm: str, perturbation:str, dataset: str, random_seed: int):
         # DALE (Laplacian-HMC)
         if dataset == 'MNIST':
             _hparam('l_dale_n_steps', 15, lambda r: 15)
-            _hparam('l_dale_step_size', 10, lambda r: 10)
+            _hparam('l_dale_step_size', 2, lambda r: 2)
             _hparam('l_dale_noise_coeff', 1, lambda r: 10 ** r.uniform(-1.0, -1.0))
         elif dataset == 'CIFAR10':
             _hparam('l_dale_n_steps', 10, lambda r: 10)

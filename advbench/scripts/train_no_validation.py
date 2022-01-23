@@ -29,13 +29,17 @@ def main(args, hparams, test_hparams):
 
     dataset = vars(datasets)[args.dataset](args.data_dir)
     train_ldr, val_ldr, test_ldr = datasets.to_loaders(dataset, hparams)
-
+    if args.algorithm=="Gaussian_DALE_PD_Reverse":
+        init_dual = 0.0
+    else:
+        init_dual = 1.0
     algorithm = vars(algorithms)[args.algorithm](
         dataset.INPUT_SHAPE, 
         dataset.NUM_CLASSES,
         hparams,
         device,
-        perturbation=args.perturbation).to(device)
+        perturbation=args.perturbation,
+        init=init_dual).to(device)
 
     adjust_lr = None if dataset.HAS_LR_SCHEDULE is False else dataset.adjust_lr
 
