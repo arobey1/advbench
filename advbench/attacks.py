@@ -1,5 +1,9 @@
 import os, sys
-import hamiltorch
+try:
+    import hamiltorch
+    HAMILTORCH_AVAILABLE = True
+except ImportError:
+    HAMILTORCH_AVAILABLE = False
 import numpy as np
 import torch
 import torch.nn as nn
@@ -215,46 +219,47 @@ class Worst_Of_K(Attack_Linf):
         self.classifier.train()
         return adv_imgs.detach(), delta.detach()
 
-class NUTS(Attack_Linf):
-    def __init__(self, classifier,  hparams, device, perturbation='Linf'):
-        super(NUTS, self).__init__(classifier,  hparams, device,  perturbation=perturbation)
-        self.infty = 10e8 #torch.tensor(float('inf')).to(device)
-        self.burn = self.hparams['n_burn']
-        self.eps = hparams['epsilon']
+if HAMILTORCH_AVAILABLE:
+    class NUTS(Attack_Linf):
+        def __init__(self, classifier,  hparams, device, perturbation='Linf'):
+            super(NUTS, self).__init__(classifier,  hparams, device,  perturbation=perturbation)
+            self.infty = 10e8 #torch.tensor(float('inf')).to(device)
+            self.burn = self.hparams['n_burn']
+            self.eps = hparams['epsilon']
 
-    def forward(self, imgs, labels):
-        self.classifier.eval()
-        batch_size = imgs.size(0)
-        total_size = 1
-        img_dims = tuple(d for d in range(1,imgs.dim()))
-        for i in imgs.size():
-            total_size = total_size*i
-        params_init = 0.001*torch.rand(total_size).to(self.device)
-        def log_prob(delta):
-            delta = delta.reshape(imgs.shape)
-            adv_imgs = imgs+torch.clamp(delta, min=-self.eps, max=self.eps)
-            loss = 1 - torch.softmax(self.classifier(adv_imgs), dim=1)[range(batch_size), labels]
-            log_loss = torch.log(loss)
-            #log_loss[torch.amax(torch.abs(delta),img_dims)>self.eps] = - self.infty
-            return log_loss.sum()
-        self.blockPrint()
-        delta = hamiltorch.sample(log_prob_func=log_prob, params_init=params_init,
-                                 num_samples=self.burn+self.hparams['n_dale_n_steps'],
-                                 step_size=self.hparams['n_dale_step_size'],
-                                 burn = self.burn,
-                                 num_steps_per_sample=7,
-                                 desired_accept_rate=0.8)[-1]
-        self.enablePrint()
-        delta = torch.clamp(delta, min=-self.eps, max=self.eps)
-        adv_imgs = imgs + delta.reshape(imgs.shape)
-        self.classifier.train()
-        return adv_imgs.detach(), delta.detach()
-    # Disable
-    def blockPrint(self):
-        sys.stdout = open(os.devnull, 'w')
+        def forward(self, imgs, labels):
+            self.classifier.eval()
+            batch_size = imgs.size(0)
+            total_size = 1
+            img_dims = tuple(d for d in range(1,imgs.dim()))
+            for i in imgs.size():
+                total_size = total_size*i
+            params_init = 0.001*torch.rand(total_size).to(self.device)
+            def log_prob(delta):
+                delta = delta.reshape(imgs.shape)
+                adv_imgs = imgs+torch.clamp(delta, min=-self.eps, max=self.eps)
+                loss = 1 - torch.softmax(self.classifier(adv_imgs), dim=1)[range(batch_size), labels]
+                log_loss = torch.log(loss)
+                #log_loss[torch.amax(torch.abs(delta),img_dims)>self.eps] = - self.infty
+                return log_loss.sum()
+            self.blockPrint()
+            delta = hamiltorch.sample(log_prob_func=log_prob, params_init=params_init,
+                                    num_samples=self.burn+self.hparams['n_dale_n_steps'],
+                                    step_size=self.hparams['n_dale_step_size'],
+                                    burn = self.burn,
+                                    num_steps_per_sample=7,
+                                    desired_accept_rate=0.8)[-1]
+            self.enablePrint()
+            delta = torch.clamp(delta, min=-self.eps, max=self.eps)
+            adv_imgs = imgs + delta.reshape(imgs.shape)
+            self.classifier.train()
+            return adv_imgs.detach(), delta.detach()
+        # Disable
+        def blockPrint(self):
+            sys.stdout = open(os.devnull, 'w')
 
-    # Restore
-    def enablePrint(self):
-        sys.stdout = sys.__stdout__
+        # Restore
+        def enablePrint(self):
+            sys.stdout = sys.__stdout__
 
     
