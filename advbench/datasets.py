@@ -1,22 +1,50 @@
+import os
+import torch
 from torch.utils.data import Dataset, Subset, DataLoader
 import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10 as CIFAR10_
 from torchvision.datasets import MNIST as MNIST_
+from ffcv.fields import IntField, RGBImageField
+from ffcv.fields.decoders import IntDecoder, SimpleRGBImageDecoder
+from ffcv.loader import Loader, OrderOption
+from ffcv.pipeline.operation import Operation
+from ffcv.transforms import RandomHorizontalFlip, Cutout, \
+    RandomTranslate, Convert, ToDevice, ToTensor, ToTorchImage
+from ffcv.transforms.common import Squeeze
+from ffcv.writer import DatasetWriter
+
 
 SPLITS = ['train', 'val', 'test']
 DATASETS = ['CIFAR10', 'MNIST']
 
 def to_loaders(all_datasets, hparams):
+    if not all_datasets.ffcv:    
+        def _to_loader(split, dataset):
+            batch_size = hparams['batch_size'] if split == 'train' else 100
+            return DataLoader(
+                dataset=dataset, 
+                batch_size=batch_size,
+                num_workers=all_datasets.N_WORKERS,
+                shuffle=(split == 'train'))
     
-    def _to_loader(split, dataset):
-        batch_size = hparams['batch_size'] if split == 'train' else 100
-        return DataLoader(
-            dataset=dataset, 
-            batch_size=batch_size,
-            num_workers=all_datasets.N_WORKERS,
-            shuffle=(split == 'train'))
-    
-    return [_to_loader(s, d) for (s, d) in all_datasets.splits.items()]
+        return [_to_loader(s, d) for (s, d) in all_datasets.splits.items()]
+    else:
+        loaders = []
+
+        for split, path  in self.splits.items():           
+        
+            ordering = OrderOption.RANDOM if split == 'train' else OrderOption.SEQUENTIAL
+            
+            batch_size = hparams['batch_size'] if split == 'train' else 100
+
+            label_pipeline = [IntDecoder(), ToTensor(), ToDevice('cuda:0'), Squeeze()]
+            
+            loaders.append(Loader(path, batch_size=batch_size, num_workers=all_datasets.N_WORKERS,
+                                order=ordering, drop_last=(split == 'train'),
+                                pipelines={'image': self.transforms[split], 'label': label_pipeline}))
+
+    return loaders
+        
 
 
 class AdvRobDataset(Dataset):
@@ -52,21 +80,36 @@ class CIFAR10(AdvRobDataset):
 
     def __init__(self, root):
         super(CIFAR10, self).__init__()
+        CIFAR_MEAN = [125.307, 122.961, 113.8575]
+        CIFAR_STD = [51.5865, 50.847, 51.255]
+        self.ffcv = True
+        self.transforms = {}
+        for split in ["train", "val", "test"]:
+            image_pipeline = [SimpleRGBImageDecoder()]
+            if split == 'train':
+                image_pipeline.extend([
+                    RandomHorizontalFlip(),
+                    Cutout(4, tuple(map(int, CIFAR_MEAN))),
+                ])
+            image_pipeline.extend([
+                ToTensor(),
+                ToDevice('cuda:0', non_blocking=True),
+                ToTorchImage(),
+                Convert(torch.float16),
+                transforms.Normalize(CIFAR_MEAN, CIFAR_STD),
+            ])
+            self.transforms[split] = image_pipeline
 
-        train_transforms = transforms.Compose([
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor()])
-        test_transforms = transforms.ToTensor()
-
-        train_data = CIFAR10_(root, train=True, transform=train_transforms, download=True)
+        train_data = CIFAR10_(root, train=True, download=True)
         self.splits['train'] = train_data
         # self.splits['train'] = Subset(train_data, range(5000))
 
-        train_data = CIFAR10_(root, train=True, transform=train_transforms)
+        train_data = CIFAR10_(root, train=True)
         self.splits['val'] = Subset(train_data, range(45000, 50000))
 
-        self.splits['test'] = CIFAR10_(root, train=False, transform=test_transforms)
+        self.splits['test'] = CIFAR10_(root, train=False)
+        self.write()
+
 
     @staticmethod
     def adjust_lr(optimizer, epoch, hparams):
@@ -80,6 +123,18 @@ class CIFAR10(AdvRobDataset):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
+    def write(self):
+        folder = os.path.join('data','ffcv', 'CIFAR')
+        for (name, ds) in self.splits.items():
+            fields = {
+                'label': IntField(),
+                'image': RGBImageField(),
+            }
+            os.makedirs(folder, exist_ok=True)
+            path = os.path.join(folder, name+'.beton')
+            writer = DatasetWriter(path, fields)
+            writer.from_indexed_dataset(ds)
+            self.splits[name] = path
 
 class MNIST(AdvRobDataset):
 
@@ -98,6 +153,7 @@ class MNIST(AdvRobDataset):
 
     def __init__(self, root):
         super(MNIST, self).__init__()
+        self.ffcv = False
         
         xforms = transforms.ToTensor()
 
