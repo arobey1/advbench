@@ -79,7 +79,6 @@ def main(args, hparams, test_hparams):
 
             if batch_idx % dataset.LOG_INTERVAL == 0:
                 print(f'Train epoch {epoch}/{dataset.N_EPOCHS} ', end='')
-                print(f'[{batch_idx * imgs.size(0)}/{len(train_ldr.dataset)}', end=' ')
                 print(f'({100. * batch_idx / len(train_ldr):.0f}%)]\t', end='')
                 for name, meter in algorithm.meters.items():
                     if meter.print:

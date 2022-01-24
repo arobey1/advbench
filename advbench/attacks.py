@@ -33,7 +33,7 @@ class PGD_Linf(Attack_Linf):
     
     def forward(self, imgs, labels):
         self.classifier.eval()
-        delta = self.perturbation.delta_init(imgs).to(self.device)
+        delta = self.perturbation.delta_init(imgs).to(imgs.device)
         for _ in range(self.hparams['pgd_n_steps']):
             delta.requires_grad_(True)
             with torch.enable_grad():
@@ -55,7 +55,7 @@ class TRADES_Linf(Attack_Linf):
 
     def forward(self, imgs, labels):
         self.classifier.eval()
-        delta = self.perturbation.delta_init(imgs).to(self.device)
+        delta = self.perturbation.delta_init(imgs).to(imgs.device)
         for _ in range(self.hparams['trades_n_steps']):
             delta.requires_grad_(True)
             with torch.enable_grad():
@@ -97,7 +97,7 @@ class LMC_Gaussian_Linf(Attack_Linf):
     def forward(self, imgs, labels):
         self.classifier.eval()
         batch_size = imgs.size(0)
-        delta = self.perturbation.delta_init(imgs).to(self.device)
+        delta = self.perturbation.delta_init(imgs).to(imgs.device)
         for _ in range(self.hparams['g_dale_n_steps']):
             delta.requires_grad_(True)
             with torch.enable_grad():
@@ -123,7 +123,7 @@ class LMC_Laplacian_Linf(Attack_Linf):
         self.classifier.eval()
         batch_size = imgs.size(0)
         noise_dist = Laplace(torch.tensor(0.), torch.tensor(1.))
-        delta = self.perturbation.delta_init(imgs).to(self.device)
+        delta = self.perturbation.delta_init(imgs).to(imgs.device)
         for _ in range(self.hparams['l_dale_n_steps']):
             delta.requires_grad_(True)
             with torch.enable_grad():
@@ -208,7 +208,7 @@ class Worst_Of_K(Attack_Linf):
         adv_loss = torch.empty((self.hparams['worst_of_k_steps'], imgs.shape[0]))
         for i in range(self.hparams['worst_of_k_steps']):
             with torch.no_grad():
-                delta = self.perturbation.delta_init(imgs).to(self.device)
+                delta = self.perturbation.delta_init(imgs).to(imgs.device)
                 delta = self.perturbation.clamp_delta(delta, imgs)
                 adv_imgs = self.perturbation.perturb_img(imgs, delta)
                 adv_loss[i] = torch.log(1 - torch.softmax(self.classifier(adv_imgs), dim=1)[range(batch_size), labels])
