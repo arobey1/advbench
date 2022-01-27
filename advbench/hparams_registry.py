@@ -27,7 +27,7 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     # Unconditional hparam definitions.
 
 
-    _hparam('batch_size', 128, lambda r: int(2 ** r.uniform(3, 8)))
+    _hparam('batch_size', 64, lambda r: int(2 ** r.uniform(3, 8)))
 
     # optimization
     _hparam('learning_rate', 0.01, lambda r: 10 ** r.uniform(-4.5, -2.5))
@@ -99,13 +99,25 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     _hparam('func_norm_n_steps', 2, lambda r: 2)
 
     # CVaR SGD
-    _hparam('cvar_sgd_t_step_size', 0.05, lambda r: 0.001)
-    _hparam('cvar_sgd_beta', 3.0, lambda r: 0.1)
-    _hparam('cvar_sgd_M', 10, lambda r: 10)
+    _hparam('cvar_sgd_t_step_size', 1.0, lambda r: 0.001)
+    _hparam('cvar_sgd_beta', 0.5, lambda r: 0.1)
+    _hparam('cvar_sgd_M', 20, lambda r: 10)
     _hparam('cvar_sgd_n_steps', 5, lambda r: 10)
 
     # TERM
     _hparam('term_t', 2.0, lambda r: 1.0)
+
+    # Randomized smoothing
+    if dataset == 'CIFAR10' or dataset == 'SVHN':
+        _hparam('rand_smoothing_sigma', 0.25, lambda r: 0.12)
+        _hparam('rand_smoothing_n_steps', 7, lambda r: 7)
+        _hparam('rand_smoothing_step_size', 0.1, lambda r: r.uniform(0.01, 0.1))
+        _hparam('rand_smoothing_n_samples', 1, lambda r: 1)
+    elif dataset == 'MNIST':
+        _hparam('rand_smoothing_sigma', 0.12, lambda r: 0.12)
+        _hparam('rand_smoothing_n_steps', 10, lambda r: 10)
+        _hparam('rand_smoothing_step_size', 2/255., lambda r: r.uniform(0.01, 0.1))
+        _hparam('rand_smoothing_n_samples', 1, lambda r: 1)
 
     return hparams
 

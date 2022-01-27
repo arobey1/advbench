@@ -27,7 +27,8 @@ ALGORITHMS = [
     'CVaR_SGD_Autograd',
     'CVaR_SGD_PD',
     'ERM_DataAug',
-    'TERM'
+    'TERM',
+    'RandSmoothing'
 ]
 
 class Algorithm(nn.Module):
@@ -124,6 +125,21 @@ class PGD(Algorithm):
 
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
+        loss = F.cross_entropy(self.predict(adv_imgs), labels)
+        loss.backward()
+        self.optimizer.step()
+
+        self.meters['loss'].update(loss.item(), n=imgs.size(0))
+
+class RandSmoothing(Algorithm):
+    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
+        super(RandSmoothing, self).__init__(input_shape, num_classes, dataset, hparams, device)
+        self.attack = attacks.SmoothAdv(self.classifier, self.hparams, device)
+
+    def step(self, imgs, labels, batch_idx=None):
+
+        adv_imgs = self.attack(imgs, labels)
+        self.optimizer.zero_grad()        
         loss = F.cross_entropy(self.predict(adv_imgs), labels)
         loss.backward()
         self.optimizer.step()

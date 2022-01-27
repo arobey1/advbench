@@ -45,6 +45,34 @@ class PGD_Linf(Attack_Linf):
         self.classifier.train()
         return adv_imgs.detach()    # this detach may not be necessary
 
+class SmoothAdv(Attack_Linf):
+    def __init__(self, classifier, hparams, device):
+        super(SmoothAdv, self).__init__(classifier, hparams, device)
+
+    def sample_deltas(self, imgs):
+        sigma = self.hparams['rand_smoothing_sigma']
+        return sigma * torch.randn_like(imgs)
+    
+    def forward(self, imgs, labels):
+        self.classifier.eval()
+
+        adv_imgs = imgs.detach()
+        for _ in range(self.hparams['rand_smoothing_n_steps']):
+            adv_imgs.requires_grad_(True)
+            loss = 0.
+            for _ in range(self.hparams['rand_smoothing_n_samples']):
+                deltas = self.sample_deltas(imgs)
+                loss += F.softmax(self.classifier(adv_imgs + deltas), dim=1)[range(imgs.size(0)), labels]
+
+            total_loss = -1. * torch.log(loss / self.hparams['rand_smoothing_n_samples']).mean()
+            grad = torch.autograd.grad(total_loss, [adv_imgs])[0].detach()
+            adv_imgs = imgs + self.hparams['rand_smoothing_step_size'] * torch.sign(grad)
+            adv_imgs = self._clamp_perturbation(imgs, adv_imgs)
+
+        self.classifier.train()
+        return adv_imgs.detach()    # this detach may not be necessary
+
+
 class TRADES_Linf(Attack_Linf):
     def __init__(self, classifier, hparams, device):
         super(TRADES_Linf, self).__init__(classifier, hparams, device)
