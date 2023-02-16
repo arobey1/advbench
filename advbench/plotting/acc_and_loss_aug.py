@@ -19,6 +19,9 @@ if __name__ == '__main__':
     with open(os.path.join(args.input_dir, 'hparams.json'), 'r') as f:
         hparams = json.load(f)
 
+    with open(os.path.join(args.input_dir, 'test_hparams.json'), 'r') as f:
+        test_hparams = json.load(f)
+
     loss_cols = [c for c in meters.columns if 'loss' in c]
 
     loss_meters = pd.melt(
@@ -43,8 +46,9 @@ if __name__ == '__main__':
         'ERM': 'Clean', 
         'PGD_Linf': 'Adversarial',
         'Augmented-ERM': 'Augmented',
-        f'{hparams["cvar_sgd_beta"]}-Quantile': f'{hparams["cvar_sgd_beta"]}-Quantile'
     }
+    for beta in test_hparams['test_betas']:
+        name_dict[f'{beta}-Quantile'] = f'{beta}-Quantile'
     g.set(title='Test accuracy')
     plotting.remove_legend_title(ax1, name_dict=name_dict)
 
