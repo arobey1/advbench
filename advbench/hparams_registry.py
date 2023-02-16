@@ -109,15 +109,15 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
 
     # Randomized smoothing
     if dataset == 'CIFAR10' or dataset == 'SVHN':
-        _hparam('rand_smoothing_sigma', 0.25, lambda r: 0.12)
-        _hparam('rand_smoothing_n_steps', 7, lambda r: 7)
-        _hparam('rand_smoothing_step_size', 0.1, lambda r: r.uniform(0.01, 0.1))
-        _hparam('rand_smoothing_n_samples', 1, lambda r: 1)
-    elif dataset == 'MNIST':
         _hparam('rand_smoothing_sigma', 0.12, lambda r: 0.12)
-        _hparam('rand_smoothing_n_steps', 10, lambda r: 10)
+        _hparam('rand_smoothing_n_steps', 10, lambda r: 7)
         _hparam('rand_smoothing_step_size', 2/255., lambda r: r.uniform(0.01, 0.1))
-        _hparam('rand_smoothing_n_samples', 1, lambda r: 1)
+        _hparam('rand_smoothing_n_samples', 10, lambda r: 1)
+    elif dataset == 'MNIST':
+        _hparam('rand_smoothing_sigma', 0.5, lambda r: 0.12)
+        _hparam('rand_smoothing_n_steps', 7, lambda r: 10)
+        _hparam('rand_smoothing_step_size', 0.1, lambda r: r.uniform(0.01, 0.1))
+        _hparam('rand_smoothing_n_samples', 10, lambda r: 1)
 
     return hparams
 
