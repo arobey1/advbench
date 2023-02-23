@@ -22,8 +22,8 @@ def make_args_list(cl_args):
             'hparams_seed': hparams_seed,
             'data_dir': cl_args.data_dir,
             'trial_seed': trial_seed,
-            'test_attacks': cl_args.test_attacks,
-            'seed': misc.seed_hash(dataset, algorithm, hparams_seed, trial_seed)
+            'seed': misc.seed_hash(dataset, algorithm, hparams_seed, trial_seed),
+            'evaluators': cl_args.evaluators
         }
 
     args_list = []
@@ -112,13 +112,12 @@ if __name__ == '__main__':
     parser.add_argument('--n_trials', type=int, default=3)
     parser.add_argument('--command_launcher', type=str, required=True)
     parser.add_argument('--hparams', type=str, default=None)
-    parser.add_argument('--test_attacks', type=str, nargs='+', default=['PGD_Linf'])
+    parser.add_argument('--evaluators', type=str, nargs='+', default=['Clean'])
     parser.add_argument('--skip_confirmation', action='store_true')
     args = parser.parse_args()
 
     args_list = make_args_list(args)
     jobs = [Job(train_args, args.output_dir) for train_args in args_list]
-
 
     for job in jobs:
 
@@ -136,4 +135,5 @@ if __name__ == '__main__':
         launcher_fn = command_launchers.REGISTRY[args.command_launcher]
         Job.launch(to_launch, launcher_fn)
 
-        
+    with open(os.path.join(args.output_dir, 'args.json'), 'w') as f:
+        json.dump(args.__dict__, f, indent=2)

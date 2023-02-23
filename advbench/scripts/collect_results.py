@@ -7,28 +7,7 @@ import os
 
 from advbench.lib import reporting, misc
 from advbench import datasets
-
-#TODO(AR): Currently no support for multiple trials
-
-def scrape_results(df, trials, adv, split='Validation'):
-
-    assert split in ['Validation', 'Test']
-
-    all_dfs = []
-    for trial in trials:
-        trial_df = df[(df['Trial-Seed'] == trial) & (df['Eval-Method'] == adv) \
-            & (df.Split == split)]
-
-        # extract the row and epoch with the best performance for given adversary
-        best_row = trial_df[trial_df.Accuracy == trial_df.Accuracy.max()]
-        best_epoch = best_row.iloc[0]['Epoch']
-        best_path = best_row.iloc[0]['Output-Dir']
-
-        best_df = df[(df.Epoch == best_epoch) & (df['Output-Dir'] == best_path) \
-            & (df['Trial-Seed'] == trial)]
-        all_dfs.append(best_df)
-
-    return pd.concat(all_dfs, ignore_index=True)
+from advbench import model_selection
 
 if __name__ == '__main__':
     np.set_printoptions(suppress=True)
@@ -36,37 +15,42 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Collect results')
     parser.add_argument('--input_dir', type=str, required=True)
     parser.add_argument('--depth', type=int, default=1, help='Results directories search depth')
+    parser.add_argument('--selection_methods', type=str, nargs='+', default=['LastStep', 'EarlyStop'])
     args = parser.parse_args()
 
     sys.stdout = misc.Tee(os.path.join(args.input_dir, 'results.txt'), 'w')
 
-    records = reporting.load_records(args.input_dir, depth=args.depth)
+    selection_methods = [
+        vars(model_selection)[s] for s in args.selection_methods
+    ]
 
-    eval_methods = records['Eval-Method'].unique()
-    dataset_names = records['Dataset'].unique()
-    train_algs = records['Train-Alg'].unique()
-    trials = records['Trial-Seed'].unique()
-    
-    for dataset in dataset_names:
-        last_epoch = vars(datasets)[dataset].N_EPOCHS - 1
+    train_args = misc.read_dict(
+        os.path.join(args.input_dir, 'args.json')
+    )
+    selection_df = reporting.load_sweep_dataframes(
+        path=args.input_dir,
+        depth=1
+    )
+    selection_metrics = [
+        k for k in selection_df.columns.values.tolist()
+        if any(e in k for e in train_args['evaluators'])
+    ]
 
-        for adv in eval_methods:
+    df = pd.melt(
+        frame=selection_df,
+        id_vars=['Split', 'Algorithm', 'trial_seed', 'seed', 'path', 'Epoch']
+    ).rename(columns={'variable': 'Metric-Name', 'value': 'Metric-Value'})
 
-            # one table for each dataset/eval_method pair
+    for method in selection_methods:
+        for metric_name, metric_df in df.groupby('Metric-Name'):
             t = prettytable.PrettyTable()
-            t.field_names = ['Training Algorithm', *[f'{m} Accuracy' for m in eval_methods], 'Output-Dir']
-            print(f'\nSelection method: {adv} accuracy.')
-            for alg in train_algs:
-                df = records[(records['Dataset'] == dataset) & (records['Train-Alg'] == alg)]
-                best_df = scrape_results(df, trials, adv, split='Test')
-                test_df = best_df[best_df.Split == 'Test']
+            t.field_names = ['Algorithm', metric_name, 'Selection Method']
 
-                accs = [test_df[test_df['Eval-Method'] == m].iloc[0]['Accuracy'] for m in eval_methods]
-                output_dir = test_df.iloc[0]['Output-Dir']
-                t.add_row([alg, *accs, output_dir])
-
+            for algorithm, algorithm_df in metric_df.groupby('Algorithm'):
+                selection = method(algorithm_df)
+                vals = selection.trial_values
+                mean, sd = np.mean(vals), np.std(vals)
+                t.add_row([
+                    algorithm, f'{mean:.4f} +/- {sd:.4f}', method.NAME
+                ])
             print(t)
-
-                
-                
-

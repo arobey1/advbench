@@ -1,28 +1,14 @@
-from torch.utils.data import Dataset, Subset, DataLoader
+from torch.utils.data import Subset
 import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10 as CIFAR10_
-from torchvision.datasets import MNIST as MNIST_
+from torchvision.datasets import MNIST as TorchvisionMNIST
 from torchvision.datasets import SVHN as SVHN_
 from RandAugment import RandAugment
 
 SPLITS = ['train', 'val', 'test']
 DATASETS = ['CIFAR10', 'MNIST', 'SVHN']
 
-def to_loaders(all_datasets, hparams):
-    
-    def _to_loader(split, dataset):
-        batch_size = hparams['batch_size'] if split == 'train' else 100
-        return DataLoader(
-            dataset=dataset, 
-            batch_size=batch_size,
-            num_workers=all_datasets.N_WORKERS,
-            shuffle=False)
-            # shuffle=(split == 'train'))
-    
-    return [_to_loader(s, d) for (s, d) in all_datasets.splits.items()]
-
-
-class AdvRobDataset(Dataset):
+class AdvRobDataset:
 
     N_WORKERS = 8            # Default, subclasses may override
     INPUT_SHAPE = None       # Subclasses should override
@@ -35,7 +21,6 @@ class AdvRobDataset(Dataset):
     def __init__(self):
         self.splits = dict.fromkeys(SPLITS)
 
-
 class CIFAR10(AdvRobDataset):
  
     INPUT_SHAPE = (3, 32, 32)
@@ -44,10 +29,6 @@ class CIFAR10(AdvRobDataset):
     CHECKPOINT_FREQ = 10
     LOG_INTERVAL = 100
     HAS_LR_SCHEDULE = True
-
-    # test adversary parameters
-    ADV_STEP_SIZE = 2/255.
-    N_ADV_STEPS = 20
 
     def __init__(self, root):
         super(CIFAR10, self).__init__()
@@ -83,28 +64,28 @@ class MNIST(AdvRobDataset):
 
     INPUT_SHAPE = (1, 28, 28)
     NUM_CLASSES = 10
-    N_EPOCHS = 150
+    N_EPOCHS = 50
     CHECKPOINT_FREQ = 10
     LOG_INTERVAL = 100
     HAS_LR_SCHEDULE = False
 
-    # test adversary parameters
-    ADV_STEP_SIZE = 0.1
-    N_ADV_STEPS = 10
-
     def __init__(self, root):
         super(MNIST, self).__init__()
         
-        xforms = transforms.ToTensor()
+        train_data = TorchvisionMNIST(
+            root=root, 
+            train=True, 
+            transform=transforms.ToTensor())
+        test_data = TorchvisionMNIST(
+            root=root,
+            train=False,
+            transform=transforms.ToTensor())
 
-        train_data = MNIST_(root, train=True, transform=xforms)
-        self.splits['train'] = train_data
-        # self.splits['train'] = Subset(train_data, range(60000))
-
-        train_data = MNIST_(root, train=True, transform=xforms)
-        self.splits['val'] = Subset(train_data, range(54000, 60000))
-
-        self.splits['test'] = MNIST_(root, train=False, transform=xforms)
+        self.splits = {
+            'train': Subset(train_data, range(54000)),
+            'validation': Subset(train_data, range(54000, 60000)),
+            'test': test_data
+        }
 
     @staticmethod
     def adjust_lr(optimizer, epoch, hparams):

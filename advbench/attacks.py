@@ -33,7 +33,7 @@ class PGD_Linf(Attack_Linf):
     def forward(self, imgs, labels):
         self.classifier.eval()
 
-        adv_imgs = imgs.detach() + 0.001 * torch.randn(imgs.shape).to(self.device).detach() #AR: is this detach necessary?
+        adv_imgs = imgs.detach() # + 0.001 * torch.randn(imgs.shape).to(self.device).detach() #AR: is this detach necessary?
         for _ in range(self.hparams['pgd_n_steps']):
             adv_imgs.requires_grad_(True)
             with torch.enable_grad():

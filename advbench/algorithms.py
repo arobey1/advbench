@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from collections import OrderedDict
 import pandas as pd
 import numpy as np
+import torch.optim as optim
 
 from advbench import networks
 from advbench import optimizers
@@ -22,7 +23,6 @@ ALGORITHMS = [
     'Gaussian_DALE_PD',
     'Gaussian_DALE_PD_Reverse',
     'KL_DALE_PD',
-    'FuncNorm',
     'CVaR_SGD',
     'CVaR_SGD_Autograd',
     'CVaR_SGD_PD',
@@ -32,17 +32,20 @@ ALGORITHMS = [
 ]
 
 class Algorithm(nn.Module):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device):
+    def __init__(self, input_shape, num_classes, hparams, device):
         super(Algorithm, self).__init__()
         self.hparams = hparams
         self.classifier = networks.Classifier(
             input_shape, num_classes, hparams)
-        self.optimizer = optimizers.Optimizer(
-            self.classifier, dataset, hparams)
+        self.optimizer = optim.SGD(
+            self.classifier.parameters(),
+            lr=hparams['learning_rate'],
+            momentum=hparams['sgd_momentum'],
+            weight_decay=hparams['weight_decay'])
         self.device = device
         
         self.meters = OrderedDict()
-        self.meters['loss'] = meters.AverageMeter()
+        self.meters['Loss'] = meters.AverageMeter()
         self.meters_df = None
 
     def step(self, imgs, labels):
@@ -69,26 +72,26 @@ class Algorithm(nn.Module):
         return self.meters_df
 
 class ERM(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(ERM, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(ERM, self).__init__(input_shape, num_classes, hparams, device)
 
-    def step(self, imgs, labels, batch_idx=None):
+    def step(self, imgs, labels):
         self.optimizer.zero_grad()
         loss = F.cross_entropy(self.predict(imgs), labels)
         loss.backward()
         self.optimizer.step()
         
-        self.meters['loss'].update(loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(loss.item(), n=imgs.size(0))
 
 class ERM_DataAug(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(ERM_DataAug, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(ERM_DataAug, self).__init__(input_shape, num_classes, hparams, device)
 
-    def sample_deltas(self, imgs, batch_idx=None):
+    def sample_deltas(self, imgs):
         eps = self.hparams['epsilon']
         return 2 * eps * torch.rand_like(imgs) - eps
 
-    def step(self, imgs, labels, batch_idx=None):
+    def step(self, imgs, labels):
         self.optimizer.zero_grad()
         loss = 0
         for _ in range(self.hparams['cvar_sgd_M']):
@@ -98,30 +101,30 @@ class ERM_DataAug(Algorithm):
         loss.backward()
         self.optimizer.step()
         
-        self.meters['loss'].update(loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(loss.item(), n=imgs.size(0))
 
 class TERM(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(TERM, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(TERM, self).__init__(input_shape, num_classes, hparams, device)
         self.meters['tilted loss'] = meters.AverageMeter()
         self.t = torch.tensor(self.hparams['term_t'])
 
-    def step(self, imgs, labels, batch_idx=None):
+    def step(self, imgs, labels):
         self.optimizer.zero_grad()
         loss = F.cross_entropy(self.predict(imgs), labels, reduction='none')
         term_loss = torch.log(torch.exp(self.t * loss).mean() + 1e-6) / self.t
         term_loss.backward()
         self.optimizer.step()
         
-        self.meters['loss'].update(loss.mean().item(), n=imgs.size(0))
+        self.meters['Loss'].update(loss.mean().item(), n=imgs.size(0))
         self.meters['tilted loss'].update(term_loss.item(), n=imgs.size(0))
 
 class PGD(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(PGD, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(PGD, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
 
-    def step(self, imgs, labels, batch_idx=None):
+    def step(self, imgs, labels):
 
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
@@ -129,14 +132,14 @@ class PGD(Algorithm):
         loss.backward()
         self.optimizer.step()
 
-        self.meters['loss'].update(loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(loss.item(), n=imgs.size(0))
 
 class RandSmoothing(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(RandSmoothing, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(RandSmoothing, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.SmoothAdv(self.classifier, self.hparams, device)
 
-    def step(self, imgs, labels, batch_idx=None):
+    def step(self, imgs, labels):
 
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()        
@@ -144,105 +147,14 @@ class RandSmoothing(Algorithm):
         loss.backward()
         self.optimizer.step()
 
-        self.meters['loss'].update(loss.item(), n=imgs.size(0))
-
-class FuncNorm(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(FuncNorm, self).__init__(input_shape, num_classes, dataset, hparams, device)
-
-    def step(self, imgs, labels, batch_idx=None):
-
-        self.optimizer.zero_grad()
-        loss = self.compute_norm_estimate(imgs, labels)
-        loss.backward()
-        self.optimizer.step()
-
-    def compute_norm_estimate(self, imgs, labels):
-
-        # sample deltas using the path HMC approach from Rice et al.
-        deltas = self.sample(imgs, labels)
-        expand_labels = labels[None].expand(m, *labels.shape).transpose(0, 1).contiguous().view(-1)
-        expand_imgs = (imgs[None] + deltas).transpose(0, 1).contiguous().view(-1, * imgs.shape[1:])
-
-        # calculate loss with estimate of L^p norm
-        preds = model(torch.clamp(expand_imgs, min=0, max=1))
-        loss = F.cross_entropy(preds, labels)
-        loss = loss.view(imgs.size(0), self.hparams['func_norm_m'])
-        loss = torch.exp(torch.log(loss + 1e-10).sum(dim=1) / self.hparams['func_norm_m'])
-        return loss.mean()
-
-    def sample(self, imgs, labels):
-        
-        batch_size = imgs.size(0)
-        p, m = self.hparams['func_norm_p'], self.hparams['func_norm_m']
-        sigma, path_len = self.hparams['func_norm_sigma'], self.hparams['func_norm_path_len']
-        alpha = path_len * sigma ** 2 / self.hparams['func_norm_n_steps']
-        ts = np.linspace(0, p, m)
-
-        eps = torch.tensor(-self.hparams['epsilon'], dtype=imgs.dtype).view(1, 1, 1).to(self.device)
-        lower_limit = torch.max(-imgs, eps)
-        upper_limit = torch.min(1 - imgs, eps)
-        deltas = (lower_limit - upper_limit) * torch.rand_like(imgs) + upper_limit
-        deltas.requires_grad = True
-
-        for i, t in enumerate(ts):
-            mom = torch.randn_like(imgs).to(self.device) * sigma
-            preds = self.classifier(imgs + deltas)
-            loss = F.cross_entropy(preds, labels, reduction='none')
-            log_loss = t * torch.log(loss + 1e-10).sum()
-            log_loss.backward()
-
-            # Compute Hamiltonian
-            H_delta = - log_loss + (torch.norm(mom.view(batch_size, -1), dim=1) ** 2 / sigma ** 2) / 2 
-
-            # Half step of momentum
-            mom += 0.5 * alpha * deltas.grad
-            proposal = deltas.data
-
-            for j in range(self.hparams['func_norm_n_steps']):
-                # Full step of position
-                proposal = proposal.data + alpha * mom / sigma ** 2
-
-                # Reflection
-                while len(torch.where(proposal < lower_limit)[0]) > 0 or len(torch.where(proposal > upper_limit)[0]) > 0:
-                    bad_idx_lower = torch.where(proposal < lower_limit)
-
-                    # Check lower bound
-                    if len(bad_idx_lower[0]) > 0:
-                        proposal.data[bad_idx_lower] = 2 * lower_limit[bad_idx_lower] - proposal.data[bad_idx_lower]
-                        mom[bad_idx_lower] = -mom[bad_idx_lower]
-
-                    # Check upper bound
-                    bad_idx_upper = torch.where(proposal > upper_limit)
-                    if len(bad_idx_upper[0]) > 0:
-                        proposal.data[bad_idx_upper] = 2 * upper_limit[bad_idx_upper] - proposal.data[bad_idx_upper]
-                        mom[bad_idx_upper] = -mom[bad_idx_upper]
-
-                proposal.requires_grad = True
-                next_preds = self.classifier(imgs + proposal)
-                next_loss = F.cross_entropy(next_preds, labels, reduction=None)
-                next_log_loss = t * torch.log(next_loss + 1e-10).sum()
-                next_log_loss.backward()
-                
-                # Full step of momentum
-                if j != self.hparams['func_norm_n_steps'] - 1:
-                    mom += alpha * proposal.grad 
-
-                next_H_delta = -next_log_loss + (torch.norm(mom.view(batch_size, -1), dim=1) ** 2 / sigma ** 2) / 2
-                change_in_H = next_H_delta - H_delta
-                u = torch.zeros_like(change_in_H).uniform_(0, 1)
-                idx_accept = torch.where(u <= torch.exp(-change_in_H))
-                deltas.data[idx_accept] = proposal.data[idx_accept]
-                deltas.grad.zero_()
-
-        return deltas.detach()
+        self.meters['Loss'].update(loss.item(), n=imgs.size(0))
 
 class FGSM(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(FGSM, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(FGSM, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.FGSM_Linf(self.classifier, self.hparams, device)
 
-    def step(self, imgs, labels, batch_idx=None):
+    def step(self, imgs, labels):
 
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
@@ -250,18 +162,18 @@ class FGSM(Algorithm):
         loss.backward()
         self.optimizer.step()
 
-        self.meters['loss'].update(loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(loss.item(), n=imgs.size(0))
 
 class TRADES(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(TRADES, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(TRADES, self).__init__(input_shape, num_classes, hparams, device)
         self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')  # TODO(AR): let's write a method to do the log-softmax part
         self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device)
         
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['invariance loss'] = meters.AverageMeter()
 
-    def step(self, imgs, labels, batch_idx=None):
+    def step(self, imgs, labels):
 
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
@@ -273,15 +185,15 @@ class TRADES(Algorithm):
         total_loss.backward()
         self.optimizer.step()
 
-        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['invariance loss'].update(robust_loss.item(), n=imgs.size(0))
 
         return {'loss': total_loss.item()}
 
 class LogitPairingBase(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device):
-        super(LogitPairingBase, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(LogitPairingBase, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
         self.meters['logit loss'] = meters.AverageMeter()
 
@@ -290,12 +202,12 @@ class LogitPairingBase(Algorithm):
         return torch.norm(logit_diff, dim=1).mean()
 
 class ALP(LogitPairingBase):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(ALP, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(ALP, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
         self.meters['robust loss'] = meters.AverageMeter()
 
-    def step(self, imgs, labels, batch_idx=None):
+    def step(self, imgs, labels):
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
         robust_loss = F.cross_entropy(self.predict(adv_imgs), labels)
@@ -304,18 +216,18 @@ class ALP(LogitPairingBase):
         total_loss.backward()
         self.optimizer.step()
 
-        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
         self.meters['logit loss'].update(logit_pairing_loss.item(), n=imgs.size(0))
 
 class CLP(LogitPairingBase):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(CLP, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(CLP, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
 
         self.meters['clean loss'] = meters.AverageMeter()
 
-    def step(self, imgs, labels, batch_idx=None):
+    def step(self, imgs, labels):
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
         clean_loss = F.cross_entropy(self.predict(imgs), labels)
@@ -324,20 +236,20 @@ class CLP(LogitPairingBase):
         total_loss.backward()
         self.optimizer.step()
 
-        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['logit loss'].update(logit_pairing_loss.item(), n=imgs.size(0))
 
 class MART(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(MART, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(MART, self).__init__(input_shape, num_classes, hparams, device)
         self.kl_loss_fn = nn.KLDivLoss(reduction='none')
         self.attack = attacks.PGD_Linf(self.classifier, self.hparams, device)
 
         self.meters['robust loss'] = meters.AverageMeter()
         self.meters['invariance loss'] = meters.AverageMeter()
 
-    def step(self, imgs, labels, batch_idx=None):
+    def step(self, imgs, labels):
         
         adv_imgs = self.attack(imgs, labels)
         self.optimizer.zero_grad()
@@ -355,7 +267,7 @@ class MART(Algorithm):
         loss.backward()
         self.optimizer.step()
 
-        self.meters['loss'].update(loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(loss_robust.item(), n=imgs.size(0))
         self.meters['invariance loss'].update(loss_adv.item(), n=imgs.size(0))
 
@@ -364,8 +276,8 @@ class MMA(Algorithm):
     pass
 
 class Gaussian_DALE(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(Gaussian_DALE, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(Gaussian_DALE, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['robust loss'] = meters.AverageMeter()
@@ -379,13 +291,13 @@ class Gaussian_DALE(Algorithm):
         total_loss.backward()
         self.optimizer.step()
 
-        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
 
 class Laplacian_DALE(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(Laplacian_DALE, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(Laplacian_DALE, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.LMC_Laplacian_Linf(self.classifier, self.hparams, device)
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['robust loss'] = meters.AverageMeter()
@@ -399,21 +311,21 @@ class Laplacian_DALE(Algorithm):
         total_loss.backward()
         self.optimizer.step()
 
-        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
 
 class PrimalDualBase(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(PrimalDualBase, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(PrimalDualBase, self).__init__(input_shape, num_classes, hparams, device)
         self.dual_params = {'dual_var': torch.tensor(1.0).to(self.device)}
         self.meters['clean loss'] = meters.AverageMeter()
         self.meters['robust loss'] = meters.AverageMeter()
         self.meters['dual variable'] = meters.AverageMeter()
 
 class Gaussian_DALE_PD(PrimalDualBase):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(Gaussian_DALE_PD, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(Gaussian_DALE_PD, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
             parameters=self.dual_params,
@@ -430,14 +342,14 @@ class Gaussian_DALE_PD(PrimalDualBase):
         self.optimizer.step()
         self.pd_optimizer.step(clean_loss.detach())
 
-        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
 
 class CVaR_SGD_Autograd(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(CVaR_SGD_Autograd, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(CVaR_SGD_Autograd, self).__init__(input_shape, num_classes, hparams, device)
         self.meters['avg t'] = meters.AverageMeter()
         self.meters['plain loss'] = meters.AverageMeter()
 
@@ -445,7 +357,7 @@ class CVaR_SGD_Autograd(Algorithm):
         eps = self.hparams['epsilon']
         return 2 * eps * torch.rand_like(imgs) - eps
 
-    def step(self, imgs, labels, batch_idx):
+    def step(self, imgs, labels):
 
         beta, M = self.hparams['cvar_sgd_beta'], self.hparams['cvar_sgd_M']
         ts = torch.ones(size=(imgs.size(0),)).to(self.device)
@@ -477,13 +389,13 @@ class CVaR_SGD_Autograd(Algorithm):
         cvar_loss.backward()
         self.optimizer.step()
 
-        self.meters['loss'].update(cvar_loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(cvar_loss.item(), n=imgs.size(0))
         self.meters['avg t'].update(ts.mean().item(), n=imgs.size(0))
         self.meters['plain loss'].update(plain_loss.item() / M, n=imgs.size(0))
 
 class CVaR_SGD(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(CVaR_SGD, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(CVaR_SGD, self).__init__(input_shape, num_classes, hparams, device)
         self.meters['avg t'] = meters.AverageMeter()
         self.meters['plain loss'] = meters.AverageMeter()
 
@@ -491,7 +403,7 @@ class CVaR_SGD(Algorithm):
         eps = self.hparams['epsilon']
         return 2 * eps * torch.rand_like(imgs) - eps
 
-    def step(self, imgs, labels, batch_idx):
+    def step(self, imgs, labels):
 
         beta = self.hparams['cvar_sgd_beta']
         M = self.hparams['cvar_sgd_M']
@@ -519,13 +431,13 @@ class CVaR_SGD(Algorithm):
         cvar_loss.backward()
         self.optimizer.step()
 
-        self.meters['loss'].update(cvar_loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(cvar_loss.item(), n=imgs.size(0))
         self.meters['avg t'].update(ts.mean().item(), n=imgs.size(0))
         self.meters['plain loss'].update(plain_loss.item() / M, n=imgs.size(0))
 
 class CVaR_SGD_PD(Algorithm):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(CVaR_SGD_PD, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(CVaR_SGD_PD, self).__init__(input_shape, num_classes, hparams, device)
         self.dual_params = {'dual_var': torch.tensor(1.0).to(self.device)}
         self.meters['avg t'] = meters.AverageMeter()
         self.meters['plain loss'] = meters.AverageMeter()
@@ -539,7 +451,7 @@ class CVaR_SGD_PD(Algorithm):
         eps = self.hparams['epsilon']
         return 2 * eps * torch.rand_like(imgs) - eps
 
-    def step(self, imgs, labels, batch_idx):
+    def step(self, imgs, labels):
 
         beta = self.hparams['cvar_sgd_beta']
         M = self.hparams['cvar_sgd_M']
@@ -569,14 +481,14 @@ class CVaR_SGD_PD(Algorithm):
         self.optimizer.step()
         self.pd_optimizer.step(plain_loss.detach() / M)
 
-        self.meters['loss'].update(cvar_loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(cvar_loss.item(), n=imgs.size(0))
         self.meters['avg t'].update(ts.mean().item(), n=imgs.size(0))
         self.meters['plain loss'].update(plain_loss.item() / M, n=imgs.size(0))
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
 
 class Gaussian_DALE_PD_Reverse(PrimalDualBase):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(Gaussian_DALE_PD_Reverse, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(Gaussian_DALE_PD_Reverse, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.LMC_Gaussian_Linf(self.classifier, self.hparams, device)
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
             parameters=self.dual_params,
@@ -593,14 +505,14 @@ class Gaussian_DALE_PD_Reverse(PrimalDualBase):
         self.optimizer.step()
         self.pd_optimizer.step(robust_loss.detach())
 
-        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
 
 class KL_DALE_PD(PrimalDualBase):
-    def __init__(self, input_shape, num_classes, dataset, hparams, device, n_data):
-        super(KL_DALE_PD, self).__init__(input_shape, num_classes, dataset, hparams, device)
+    def __init__(self, input_shape, num_classes, hparams, device):
+        super(KL_DALE_PD, self).__init__(input_shape, num_classes, hparams, device)
         self.attack = attacks.TRADES_Linf(self.classifier, self.hparams, device)
         self.kl_loss_fn = nn.KLDivLoss(reduction='batchmean')
         self.pd_optimizer = optimizers.PrimalDualOptimizer(
@@ -620,7 +532,7 @@ class KL_DALE_PD(PrimalDualBase):
         self.optimizer.step()
         self.pd_optimizer.step(clean_loss.detach())
 
-        self.meters['loss'].update(total_loss.item(), n=imgs.size(0))
+        self.meters['Loss'].update(total_loss.item(), n=imgs.size(0))
         self.meters['clean loss'].update(clean_loss.item(), n=imgs.size(0))
         self.meters['robust loss'].update(robust_loss.item(), n=imgs.size(0))
         self.meters['dual variable'].update(self.dual_params['dual_var'].item(), n=1)
