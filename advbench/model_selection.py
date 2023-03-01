@@ -17,7 +17,7 @@ class ModelSelection:
         test_df['trial_rank'] = validation_df['trial_rank'].tolist()
 
         self.trial_values = []
-        for t, df in test_df.groupby('trial_seed'):
+        for _, df in test_df.groupby('trial_seed'):
             self.trial_values.append(
                 df[df.trial_rank == 1.0]['Metric-Value'].iloc[0])
 

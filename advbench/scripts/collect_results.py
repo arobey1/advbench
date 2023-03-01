@@ -6,7 +6,6 @@ import sys
 import os
 
 from advbench.lib import reporting, misc
-from advbench import datasets
 from advbench import model_selection
 
 if __name__ == '__main__':
