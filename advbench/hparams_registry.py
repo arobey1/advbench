@@ -33,7 +33,7 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     _hparam('sgd_momentum', 0.9, lambda r: r.uniform(0.8, 0.95))
     _hparam('weight_decay', 3.5e-3, lambda r: 10 ** r.uniform(-6, -3))
 
-    if dataset == 'MNIST':
+    if 'MNIST' in dataset:
         _hparam('epsilon', 0.3, lambda r: 0.3)
     elif dataset == 'CIFAR10' or dataset == 'SVHN':
         _hparam('epsilon', 0.031, lambda r: 0.031)
@@ -41,15 +41,15 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     # Algorithm specific
 
     ##### PGD #####
-    if dataset == 'MNIST':
+    if 'MNIST' in dataset:
         _hparam('pgd_n_steps', 7, lambda r: 7)
-        _hparam('pgd_step_size', 0.1, lambda r: 0.1)
+        _hparam('pgd_step_size', 0.1, lambda r: r.uniform(0.05, 0.2))
     elif dataset == 'CIFAR10' or dataset == 'SVHN':
         _hparam('pgd_n_steps', 10, lambda r: 10)
         _hparam('pgd_step_size', 0.007, lambda r: 0.007)
 
     ##### TRADES #####
-    if dataset == 'MNIST':
+    if 'MNIST' in dataset:
         _hparam('trades_n_steps', 7, lambda r: 7)
         _hparam('trades_step_size', 0.1, lambda r: r.uniform(0.01, 0.1))
         _hparam('trades_beta', 1.0, lambda r: r.uniform(0.1, 10.0))
@@ -59,13 +59,13 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
         _hparam('trades_beta', 6.0, lambda r: r.uniform(0.1, 10.0))
 
     ##### MART #####
-    if dataset == 'MNIST':
+    if 'MNIST' in dataset:
         _hparam('mart_beta', 5.0, lambda r: r.uniform(0.1, 10.0))
     elif dataset == 'CIFAR10' or dataset == 'SVHN':
         _hparam('mart_beta', 5.0, lambda r: r.uniform(0.1, 10.0))
 
     ##### Gaussian DALE #####
-    if dataset == 'MNIST':
+    if 'MNIST' in dataset:
         _hparam('g_dale_n_steps', 7, lambda r: 7)
         _hparam('g_dale_step_size', 0.1, lambda r: 0.1)
         _hparam('g_dale_noise_coeff', 0.001, lambda r: 10 ** r.uniform(-6.0, -2.0))
@@ -76,7 +76,7 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
     _hparam('g_dale_nu', 0.1, lambda r: 0.1)
 
     # DALE (Laplacian-HMC)
-    if dataset == 'MNIST':
+    if 'MNIST' in dataset:
         _hparam('l_dale_n_steps', 7, lambda r: 7)
         _hparam('l_dale_step_size', 0.1, lambda r: 0.1)
         _hparam('l_dale_noise_coeff', 0.001, lambda r: 10 ** r.uniform(-6.0, -2.0))
@@ -105,7 +105,7 @@ def _hparams(algorithm: str, dataset: str, random_seed: int):
         _hparam('rand_smoothing_n_steps', 10, lambda r: 7)
         _hparam('rand_smoothing_step_size', 2/255., lambda r: r.uniform(0.01, 0.1))
         _hparam('rand_smoothing_n_samples', 10, lambda r: 1)
-    elif dataset == 'MNIST':
+    elif 'MNIST' in dataset:
         _hparam('rand_smoothing_sigma', 0.5, lambda r: 0.12)
         _hparam('rand_smoothing_n_steps', 7, lambda r: 10)
         _hparam('rand_smoothing_step_size', 0.1, lambda r: r.uniform(0.01, 0.1))
@@ -126,13 +126,13 @@ def test_hparams(algorithm: str, dataset: str):
     _hparam('test_betas', [0.1, 0.05, 0.01])
     _hparam('aug_n_samples', 100)
 
-    if dataset == 'MNIST':
+    if 'MNIST' in dataset:
         _hparam('epsilon', 0.3)
     elif dataset == 'CIFAR10' or dataset == 'SVHN':
         _hparam('epsilon', 8/255.)
 
     ##### PGD #####
-    if dataset == 'MNIST':
+    if 'MNIST' in dataset:
         _hparam('pgd_n_steps', 10)
         _hparam('pgd_step_size', 0.1)
     elif dataset == 'CIFAR10' or dataset == 'SVHN':
@@ -140,7 +140,7 @@ def test_hparams(algorithm: str, dataset: str):
         _hparam('pgd_step_size', 0.003)
 
     ##### TRADES #####
-    if dataset == 'MNIST':
+    if 'MNIST' in dataset:
         _hparam('trades_n_steps', 10)
         _hparam('trades_step_size', 0.1)
     elif dataset == 'CIFAR10' or dataset == 'SVHN':

@@ -25,22 +25,25 @@ def main(args, hparams, test_hparams):
     train_df_path = os.path.join(args.output_dir, 'train.pd')
     selection_df_path = os.path.join(args.output_dir, 'selection.pd')
 
-    dataset = vars(datasets)[args.dataset](args.data_dir)
+    dataset = vars(datasets)[args.dataset](args.data_dir, device)
 
     train_loader = DataLoader(
         dataset=dataset.splits['train'],
         batch_size=hparams['batch_size'],
         num_workers=dataset.N_WORKERS,
+        pin_memory=False,
         shuffle=True)
     validation_loader = DataLoader(
         dataset=dataset.splits['validation'],
         batch_size=hparams['batch_size'],
         num_workers=dataset.N_WORKERS,
+        pin_memory=False,
         shuffle=False)
     test_loader = DataLoader(
         dataset=dataset.splits['test'],
         batch_size=100,
         num_workers=dataset.N_WORKERS,
+        pin_memory=False,
         shuffle=False)
 
     algorithm = vars(algorithms)[args.algorithm](
@@ -75,7 +78,8 @@ def main(args, hparams, test_hparams):
         for batch_idx, (imgs, labels) in enumerate(train_loader):
 
             timer.batch_start()
-            imgs, labels = imgs.to(device), labels.to(device)
+            if not dataset.ON_DEVICE:
+                imgs, labels = imgs.to(device), labels.to(device)
             algorithm.step(imgs, labels)
 
             if batch_idx % dataset.LOG_INTERVAL == 0:
@@ -93,33 +97,20 @@ def main(args, hparams, test_hparams):
         for name, meter in algorithm.meters.items():
             results['Train'].update({name: meter.avg})
 
-        print('\nTrain')
-        misc.print_row([key for key in results['Train'].keys()]) 
-        misc.print_row([results['Train'][key] for key in results['Train'].keys()])
-
         for evaluator in evaluators:
             for k, v in evaluator.calculate(validation_loader).items():
                 results['Validation'].update({k: v})
 
-        print('\nValidation')
-        misc.print_row([key for key in results['Validation'].keys()]) 
-        misc.print_row([results['Validation'][key] for key in results['Validation'].keys()])
-
         for evaluator in evaluators:
             for k, v in evaluator.calculate(test_loader).items():
                 results['Test'].update({k: v})
-
-        print('\nTest')
-        misc.print_row([key for key in results['Test'].keys()])
-        misc.print_row([results['Test'][key] for key in results['Test'].keys()])
 
         epoch_time = time.time() - epoch_start
         total_time += epoch_time
 
         results.update({
             'Epoch-Time': epoch_time,
-            'Total-Time': total_time
-        })
+            'Total-Time': total_time})
 
         # print results
         print(f'Epoch: {epoch+1}/{dataset.N_EPOCHS}\t', end='')
