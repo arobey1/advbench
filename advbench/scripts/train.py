@@ -62,6 +62,7 @@ def main(args, hparams, test_hparams):
         vars(evalulation_methods)[e](
             algorithm=algorithm,
             device=device,
+            output_dir=args.output_dir,
             test_hparams=test_hparams)
         for e in args.evaluators]
 
@@ -97,13 +98,25 @@ def main(args, hparams, test_hparams):
         for name, meter in algorithm.meters.items():
             results['Train'].update({name: meter.avg})
 
+        print('\nTrain')
+        misc.print_row([key for key in results['Train'].keys()]) 
+        misc.print_row([results['Train'][key] for key in results['Train'].keys()])
+
         for evaluator in evaluators:
             for k, v in evaluator.calculate(validation_loader).items():
                 results['Validation'].update({k: v})
 
+        print('\nValidation')
+        misc.print_row([key for key in results['Validation'].keys()]) 
+        misc.print_row([results['Validation'][key] for key in results['Validation'].keys()])
+
         for evaluator in evaluators:
             for k, v in evaluator.calculate(test_loader).items():
                 results['Test'].update({k: v})
+
+        print('\nTest')
+        misc.print_row([key for key in results['Test'].keys()])
+        misc.print_row([results['Test'][key] for key in results['Test'].keys()])
 
         epoch_time = time.time() - epoch_start
         total_time += epoch_time
