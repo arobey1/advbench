@@ -4,7 +4,6 @@ import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10 as CIFAR10_
 from torchvision.datasets import MNIST as TorchvisionMNIST
 from torchvision.datasets import SVHN as SVHN_
-from RandAugment import RandAugment
 
 SPLITS = ['train', 'val', 'test']
 DATASETS = ['CIFAR10', 'MNIST', 'SVHN']
